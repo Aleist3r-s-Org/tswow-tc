@@ -82,13 +82,18 @@ void PetAI::UpdateAI(uint32 diff)
         }
 
         // Check before attacking to prevent pets from leaving stay position
+        /** @custom-start */
+        bool canMelee = !(me->GetEntry() == 416 || me->GetEntry() == 510 || me->GetEntry() == 37994); // Imp / Water Ele
         if (me->GetCharmInfo()->HasCommandState(COMMAND_STAY))
         {
             if (me->GetCharmInfo()->IsCommandAttack() || (me->GetCharmInfo()->IsAtStay() && me->IsWithinMeleeRange(me->GetVictim())))
-                DoMeleeAttackIfReady();
+                if (canMelee)
+                    DoMeleeAttackIfReady();
         }
         else
-            DoMeleeAttackIfReady();
+            if (canMelee)
+                DoMeleeAttackIfReady();
+        /** @custom-end */
     }
     else
     {
@@ -534,7 +539,15 @@ bool PetAI::CanAttack(Unit* target)
 
     // Follow
     if (me->GetCharmInfo()->HasCommandState(COMMAND_FOLLOW))
-        return !me->GetCharmInfo()->IsReturning();
+    {
+        if (me->GetCharmInfo()->IsReturning())
+            return false;
+
+        if (me->HasUnitFlag(UNIT_FLAG_STUNNED) && !me->HasUnitState(UNIT_STATE_STUNNED))
+            return false;
+
+        return true;
+    }
 
     // default, though we shouldn't ever get here
     return false;

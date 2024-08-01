@@ -103,6 +103,8 @@ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public Ma
                 m_ignoreCorpseDecayRatio = true;
         }
         uint32 GetCorpseDelay() const { return m_corpseDelay; }
+        uint32 GetRespawnAggroDelay() const { return m_respawnAggroDelay; }
+        void SetRespawnAggroDelay(uint32 delay) { m_respawnAggroDelay = delay; }
         bool IsRacialLeader() const { return GetCreatureTemplate()->RacialLeader; }
         bool IsCivilian() const { return (GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_CIVILIAN) != 0; }
         bool IsTrigger() const { return (GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_TRIGGER) != 0; }
@@ -144,7 +146,7 @@ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public Ma
         /// @todo Rename these properly
         bool isCanInteractWithBattleMaster(Player* player, bool msg) const;
         bool CanResetTalents(Player* player, bool pet) const;
-        bool CanCreatureAttack(Unit const* victim, bool force = true) const;
+        bool CanCreatureAttack(Unit const* victim, bool force = true, bool checkAccessible = true) const;
         void LoadTemplateImmunities();
         bool IsImmunedToSpell(SpellInfo const* spellInfo, WorldObject const* caster, bool requireImmunityPurgesEffectAttribute = false) const override;
         bool IsImmunedToSpellEffect(SpellInfo const* spellInfo, SpellEffectInfo const& spellEffectInfo, WorldObject const* caster, bool requireImmunityPurgesEffectAttribute = false) const override;
@@ -207,6 +209,8 @@ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public Ma
         CreatureData const* GetCreatureData() const { return m_creatureData; }
         CreatureAddon const* GetCreatureAddon() const;
 
+        void SetDetectionDistance(float dist) { m_detectionDistance = dist; }
+
         std::string const& GetAIName() const;
         std::string GetScriptName() const;
         uint32 GetScriptId() const;
@@ -246,6 +250,7 @@ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public Ma
 
         bool CanStartAttack(Unit const* u, bool force) const;
         float GetAttackDistance(Unit const* player) const;
+        float GetDetectionRange() const { return m_detectionDistance; }
         float GetAggroRange(Unit const* target) const;
 
         void SendAIReaction(AiReaction reactionType);
@@ -365,6 +370,9 @@ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public Ma
         time_t GetLastDamagedTime() const { return _lastDamagedTime; }
         void SetLastDamagedTime(time_t val) { _lastDamagedTime = val; }
 
+        bool IsFreeToMove();
+        static constexpr uint32 MOVE_CIRCLE_CHECK_INTERVAL = 3000;
+        static constexpr uint32 MOVE_BACKWARDS_CHECK_INTERVAL = 2000;
         CreatureTextRepeatIds GetTextRepeatGroup(uint8 textGroup);
         void SetTextRepeatId(uint8 textGroup, uint8 id);
         void ClearTextRepeatGroup(uint8 textGroup);
@@ -375,6 +383,8 @@ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public Ma
         bool IsEngaged() const override;
         void AtEngage(Unit* target) override;
         void AtDisengage() override;
+
+        void SetAssistanceTimer(uint32 value) { m_assistanceTimer = value; }
 
         bool HasCanSwimFlagOutOfCombat() const
         {
@@ -407,9 +417,12 @@ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public Ma
         time_t m_respawnTime;                               // (secs) time of next respawn
         uint32 m_respawnDelay;                              // (secs) delay between corpse disappearance and respawning
         uint32 m_corpseDelay;                               // (secs) delay between death and corpse disappearance
+        uint32 m_respawnAggroDelay;                         // (msecs)delay between respawn and aggro due to movement
         bool m_ignoreCorpseDecayRatio;
         float m_wanderDistance;
         uint32 m_boundaryCheckTime;                         // (msecs) remaining time for next evade boundary check
+        uint32 m_backpedalTime;                             // (msecs) remaining time for next move backwards check
+        uint32 m_encircleTime;                              // (msecs) remaining time for next encircle movement check
         uint32 m_combatPulseTime;                           // (msecs) remaining time for next zone-in-combat pulse
         uint32 m_combatPulseDelay;                          // (secs) how often the creature puts the entire zone in combat (only works in dungeons)
 
@@ -437,12 +450,15 @@ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public Ma
         CreatureTemplate const* m_creatureInfo;                 // Can differ from sObjectMgr->GetCreatureTemplate(GetEntry()) in difficulty mode > 0
         CreatureData const* m_creatureData;
 
+        float m_detectionDistance;
+
         uint16 m_LootMode;                                  // Bitmask (default: LOOT_MODE_DEFAULT) that determines what loot will be lootable
 
         bool IsInvisibleDueToDespawn() const override;
         bool CanAlwaysSee(WorldObject const* obj) const override;
 
     private:
+        bool CanPeriodicallyCallForAssistance() const;
         void ForcedDespawn(uint32 timeMSToDespawn = 0, Seconds forceRespawnTimer = 0s);
         bool CheckNoGrayAggroConfig(Player* player, uint32 playerLevel, uint32 creatureLevel) const; // No aggro from gray creatures
 
@@ -475,6 +491,8 @@ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public Ma
         bool _regenerateHealthLock; // Dynamically set
 
         bool _isMissingCanSwimFlagOutOfCombat;
+
+        uint32 m_assistanceTimer;
 };
 
 class TC_GAME_API AssistDelayEvent : public BasicEvent

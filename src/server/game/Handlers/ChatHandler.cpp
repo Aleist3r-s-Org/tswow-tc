@@ -149,7 +149,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket& recvData)
             Unit::AuraEffectList const& ModLangAuras = sender->GetAuraEffectsByType(SPELL_AURA_MOD_LANGUAGE);
             if (!ModLangAuras.empty())
                 lang = ModLangAuras.front()->GetMiscValue();
-            else if (HasPermission(rbac::RBAC_PERM_TWO_SIDE_INTERACTION_CHAT))
+            else if (sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_CHAT))
                 lang = LANG_UNIVERSAL;
             else
             {
@@ -357,7 +357,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket& recvData)
                     return;
                 }
 
-                if (GetPlayer()->GetTeam() != receiver->GetTeam() && !HasPermission(rbac::RBAC_PERM_TWO_SIDE_INTERACTION_CHAT))
+                if (GetPlayer()->GetTeam() != receiver->GetTeam() && !sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_CHAT))
                 {
                     SendWrongFactionNotice();
                     return;
@@ -657,6 +657,8 @@ void WorldSession::HandleTextEmoteOpcode(WorldPacket& recvData)
         case EMOTE_STATE_KNEEL:
         case EMOTE_ONESHOT_NONE:
             break;
+        case EMOTE_STATE_DANCE:
+            GetPlayer()->SetEmoteState(emote);
         default:
             // Only allow text-emotes for "dead" entities (feign death included)
             if (GetPlayer()->HasUnitState(UNIT_STATE_DIED))

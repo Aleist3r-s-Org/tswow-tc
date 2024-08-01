@@ -2587,7 +2587,7 @@ void Spell::TargetInfo::DoDamageAndTriggers(Spell* spell)
         spell->m_hitMask |= hitMask;
 
         // Do not take combo points on dodge and miss
-        if (MissCondition != SPELL_MISS_NONE && spell->m_needComboPoints && spell->m_targets.GetUnitTargetGUID() == TargetGUID)
+        if (MissCondition != SPELL_MISS_NONE && (MissCondition != SPELL_MISS_BLOCK && !spell->GetSpellInfo()->HasAttribute(SPELL_ATTR3_COMPLETELY_BLOCKED)) && spell->m_needComboPoints && spell->m_targets.GetUnitTargetGUID() == TargetGUID)
             spell->m_needComboPoints = false;
 
         // _spellHitTarget can be null if spell is missed in DoSpellHitOnUnit
@@ -2714,9 +2714,11 @@ SpellMissInfo Spell::PreprocessSpellHit(Unit* unit, bool scaleAura, TargetInfo& 
         if (creatureTarget->IsEvadingAttacks())
             return SPELL_MISS_EVADE;
 
-    // For delayed spells immunity may be applied between missile launch and hit - check immunity for that case
-    if (m_spellInfo->Speed && unit->IsImmunedToSpell(m_spellInfo, m_caster))
+    /** @custom-start */
+    // properly catch wands spell school.
+    if (m_spellInfo->Speed && ((m_damage > 0 && unit->IsImmunedToDamage(m_spellInfo) || unit->IsImmunedToDamage(m_spellSchoolMask) || unit->IsImmunedToSpell(m_spellInfo, m_caster))))
         return SPELL_MISS_IMMUNE;
+    /** @custom-end */
 
     if (Player* player = unit->ToPlayer())
     {
@@ -4235,7 +4237,7 @@ void Spell::SendSpellStart()
         castFlags |= CAST_FLAG_AMMO;
     if ((m_caster->GetTypeId() == TYPEID_PLAYER ||
         (m_caster->GetTypeId() == TYPEID_UNIT && m_caster->ToCreature()->IsPet()))
-         && m_spellInfo->PowerType != POWER_HEALTH)
+         && m_spellInfo->PowerType != POWER_HEALTH && m_powerCost)
         castFlags |= CAST_FLAG_POWER_LEFT_SELF;
 
     if (m_spellInfo->RuneCostID && m_spellInfo->PowerType == POWER_RUNE)
@@ -4293,7 +4295,7 @@ void Spell::SendSpellGo()
 
     if ((m_caster->GetTypeId() == TYPEID_PLAYER ||
         (m_caster->GetTypeId() == TYPEID_UNIT && m_caster->ToCreature()->IsPet()))
-        && m_spellInfo->PowerType != POWER_HEALTH)
+        && m_spellInfo->PowerType != POWER_HEALTH && m_powerCost)
         castFlags |= CAST_FLAG_POWER_LEFT_SELF;
 
     //@tswow-begin
@@ -4840,7 +4842,7 @@ void Spell::TakePower()
     unitCaster->ModifyPower(powerType, -m_powerCost);
 
     // Set the five second timer
-    if (powerType == POWER_MANA && m_powerCost > 0)
+    if (powerType == POWER_MANA && m_powerCost > 0 && !GetSpellInfo()->HasAttribute(SPELL_ATTR2_DONT_BLOCK_MANA_REGEN))
         unitCaster->SetLastManaUse(GameTime::GetGameTimeMS());
 }
 
@@ -6132,10 +6134,22 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* param1 /*= nullptr*/, uint
 
         // check if target already has the same type, but more powerful aura
         if (!nonAuraEffectMask && (approximateAuraEffectMask & (1 << spellEffectInfo.EffectIndex)) && !m_spellInfo->IsTargetingArea())
+        {
             if (Unit* target = m_targets.GetUnitTarget())
+            {
                 if (!target->IsHighestExclusiveAuraEffect(m_spellInfo, AuraType(spellEffectInfo.ApplyAuraName),
                     spellEffectInfo.CalcValue(m_caster, &m_spellValue->EffectBasePoints[spellEffectInfo.EffectIndex]), approximateAuraEffectMask, false))
                     return SPELL_FAILED_AURA_BOUNCED;
+
+                // Not castable on shapeshifted targets
+                if (m_spellInfo->InterruptFlags & AURA_INTERRUPT_FLAG_TRANSFORM && target->IsShapeShifted())
+                    return SPELL_FAILED_BAD_TARGETS;
+
+                // Not castable on mounted targets
+                if (m_spellInfo->InterruptFlags & AURA_INTERRUPT_FLAG_MOUNT && target->IsMounted())
+                    return SPELL_FAILED_BAD_TARGETS;
+            }
+        }
     }
 
     // check trade slot case (last, for allow catch any another cast problems)

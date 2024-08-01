@@ -3383,12 +3383,47 @@ void Map::ProcessRespawns()
     }
 }
 
+class DynamicCreatureRespawnRatesChecker
+{
+public:
+    DynamicCreatureRespawnRatesChecker(const Creature* crea) : _count(0), _hasNearbyEscort(false)
+    {
+        _myLevel = crea->GetLevel();
+        _maxLevelDiff = sWorld->getIntConfig(CONFIG_RESPAWN_DYNAMIC_CREATURE_PLAYER_MAX_LEVEL_DIFF);
+    }
+
+    void operator()(Player* player)
+    {
+        // TODO
+        // if (_hasNearbyEscort || player->Escort())
+        // {
+        //     _hasNearbyEscort = true;
+        //     return;
+        // }
+
+        if (uint32(abs(int32(player->GetLevel()) - (int32)_myLevel)) > _maxLevelDiff)
+            return;
+
+        ++_count;
+    }
+
+    uint32 GetCount() { return _count; }
+    bool HasNearbyEscort() { return _hasNearbyEscort; }
+
+private:
+    uint32 _count;
+    uint32 _myLevel;
+    uint32 _maxLevelDiff;
+    bool _hasNearbyEscort;
+};
+
 void Map::ApplyDynamicModeRespawnScaling(WorldObject const* obj, ObjectGuid::LowType spawnId, uint32& respawnDelay, uint32 mode) const
 {
     ASSERT(mode == 1);
     ASSERT(obj->GetMap() == this);
 
-    if (IsBattlegroundOrArena())
+    // Force to continents.
+    if (IsBattlegroundOrArena() || IsDungeon() || IsRaid())
         return;
 
     SpawnObjectType type;
@@ -3404,6 +3439,7 @@ void Map::ApplyDynamicModeRespawnScaling(WorldObject const* obj, ObjectGuid::Low
             return;
     }
 
+    // Only those opted in.
     SpawnMetadata const* data = sObjectMgr->GetSpawnMetadata(type, spawnId);
     if (!data)
         return;
@@ -3411,20 +3447,122 @@ void Map::ApplyDynamicModeRespawnScaling(WorldObject const* obj, ObjectGuid::Low
     if (!(data->spawnGroupData->flags & SPAWNGROUP_FLAG_DYNAMIC_SPAWN_RATE))
         return;
 
-    auto it = _zonePlayerCountMap.find(obj->GetZoneId());
-    if (it == _zonePlayerCountMap.end())
-        return;
-    uint32 const playerCount = it->second;
-    if (!playerCount)
-        return;
-    double const adjustFactor = sWorld->getFloatConfig(type == SPAWN_TYPE_GAMEOBJECT ? CONFIG_RESPAWN_DYNAMICRATE_GAMEOBJECT : CONFIG_RESPAWN_DYNAMICRATE_CREATURE) / playerCount;
-    if (adjustFactor >= 1.0) // nothing to do here
-        return;
-    uint32 const timeMinimum = sWorld->getIntConfig(type == SPAWN_TYPE_GAMEOBJECT ? CONFIG_RESPAWN_DYNAMICMINIMUM_GAMEOBJECT : CONFIG_RESPAWN_DYNAMICMINIMUM_CREATURE);
-    if (respawnDelay <= timeMinimum)
-        return;
+    uint32 originalDelay = respawnDelay;
 
-    respawnDelay = std::max<uint32>(ceil(respawnDelay * adjustFactor), timeMinimum);
+    switch (type)
+    {
+        case SPAWN_TYPE_CREATURE:
+        {
+            if (originalDelay < sWorld->getIntConfig(CONFIG_RESPAWN_DYNAMIC_CREATURE_MIN_RESPAWN_TIME))
+                return;
+
+            float checkRange = sWorld->getFloatConfig(CONFIG_RESPAWN_DYNAMIC_CREATURE_RANGE);
+            if (checkRange <= 0)
+                return;
+
+            const Creature* crea = obj->ToCreature();
+
+            if (crea->IsCritter())
+                return;
+
+            DynamicCreatureRespawnRatesChecker check(crea);
+            Trinity::PlayerWorker<DynamicCreatureRespawnRatesChecker> searcher(crea, check);
+            Cell::VisitWorldObjects(crea, searcher, checkRange);
+
+            // No dynamic respawns around an in progress escort
+            if (check.HasNearbyEscort())
+                return;
+
+            int32 count = check.GetCount();
+            count -= sWorld->getIntConfig(CONFIG_RESPAWN_DYNAMIC_CREATURE_PLAYER_THRESHOLD);
+            if (count <= 0)
+                return;
+
+            float maxReductionRate = sWorld->getFloatConfig(CONFIG_RESPAWN_DYNAMIC_CREATURE_MAX_REDUCTION_RATE);
+            float reductionRate = count * sWorld->getFloatConfig(CONFIG_RESPAWN_DYNAMIC_CREATURE_PERCENT_PER_PLAYER) / 100.0f;
+            if (reductionRate > maxReductionRate)
+                reductionRate = maxReductionRate;
+
+            // Invalid configuration
+            if (reductionRate < 0)
+                return;
+
+            // Scale by level, less effective near cap.
+            uint32 maxLevel = sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
+            float levelFactor = 1 - (crea->GetLevel() - 1) / (maxLevel - 1);
+            if (levelFactor < 0.1f)
+                levelFactor = 0.1f;
+
+            // Calculate reduction
+            uint32 reduction = static_cast<uint32>(reductionRate * levelFactor * originalDelay);
+            if (reduction >= respawnDelay)
+                respawnDelay = 0;
+            else
+                respawnDelay -= reduction;
+
+            uint32 minimum = sWorld->getIntConfig(CONFIG_RESPAWN_DYNAMIC_CREATURE_MIN_RESPAWN_TIME);
+            uint32 indoorMinimum = sWorld->getIntConfig(CONFIG_RESPAWN_DYNAMIC_CREATURE_MIN_RESPAWN_TIME_INDOOR);
+            if (crea->GetCreatureTemplate()->rank >= CREATURE_ELITE_ELITE)
+            {
+                uint32 eliteMin = sWorld->getIntConfig(CONFIG_RESPAWN_DYNAMIC_CREATURE_MIN_RESPAWN_TIME_ELITE);
+                if (minimum < eliteMin)
+                    minimum = eliteMin;
+            }
+            else if (indoorMinimum > 0 && !crea->IsOutdoors())
+            {
+                minimum = indoorMinimum;
+            }
+
+            // Cap the lower-end reduction at the chosen minimum
+            if (respawnDelay < minimum)
+                respawnDelay = minimum;
+
+            break;
+        }
+        case SPAWN_TYPE_GAMEOBJECT:
+        {
+            if (originalDelay < sWorld->getIntConfig(CONFIG_RESPAWN_DYNAMIC_GOBJECT_MIN_RESPAWN_TIME))
+                return;
+
+            const GameObject* go = obj->ToGameObject();
+
+            // Overall Zone Count
+            auto it = _zonePlayerCountMap.find(obj->GetZoneId());
+            if (it == _zonePlayerCountMap.end())
+                return;
+
+            int32 count = it->second;
+            count -= sWorld->getIntConfig(CONFIG_RESPAWN_DYNAMIC_GOBJECT_PLAYER_THRESHOLD);
+            if (count <= 0)
+                return;
+
+            float maxReductionRate = sWorld->getFloatConfig(CONFIG_RESPAWN_DYNAMIC_GOBJECT_MAX_REDUCTION_RATE);
+            float reductionRate = count * sWorld->getFloatConfig(CONFIG_RESPAWN_DYNAMIC_GOBJECT_PERCENT_PER_PLAYER) / 100.0f;
+            if (reductionRate > maxReductionRate)
+                reductionRate = maxReductionRate;
+
+            // Invalid configuration
+            if (reductionRate < 0)
+                return;
+
+            uint32 reduction = static_cast<uint32>(reductionRate * originalDelay);
+            if (reduction >= respawnDelay)
+                respawnDelay = 0;
+            else
+                respawnDelay -= reduction;
+
+            // Cap the lower-end reduction at the chosen minimum
+            uint32 minimum = sWorld->getIntConfig(CONFIG_RESPAWN_DYNAMIC_GOBJECT_MIN_RESPAWN_TIME);
+            if (respawnDelay < minimum)
+                respawnDelay = minimum;
+
+            break;
+        }
+    }
+
+    // Prevent bad configs extending the respawn time beyond default
+    if (respawnDelay > originalDelay)
+        respawnDelay = originalDelay;
 }
 
 bool Map::ShouldBeSpawnedOnGridLoad(SpawnObjectType type, ObjectGuid::LowType spawnId) const
@@ -4654,6 +4792,175 @@ time_t Map::GetLinkedRespawnTime(ObjectGuid guid) const
     return time_t(0);
 }
 
+
+/**
+ * @brief Check if a given source can reach a specific point following a path
+ * and normalize the coords. Use this method for long paths, otherwise use the
+ * overloaded method with the start coords when you need to do a quick check on small segments
+ *
+ */
+bool Map::CanReachPositionAndGetValidCoords(WorldObject const* source, PathGenerator* path, float& destX, float& destY, float& destZ, bool failOnCollision) const
+{
+    G3D::Vector3 prevPath = path->GetStartPosition();
+    for (auto& vector : path->GetPath())
+    {
+        float x = vector.x;
+        float y = vector.y;
+        float z = vector.z;
+
+        if (!CanReachPositionAndGetValidCoords(source, prevPath.x, prevPath.y, prevPath.z, x, y, z, failOnCollision))
+        {
+            destX = x;
+            destY = y;
+            destZ = z;
+            return false;
+        }
+
+        prevPath = vector;
+    }
+
+    destX = prevPath.x;
+    destY = prevPath.y;
+    destZ = prevPath.z;
+
+    return true;
+}
+
+/**
+ * @brief validate the new destination and set reachable coords
+ * Check if a given unit can reach a specific point on a segment
+ * and set the correct dest coords
+ * NOTE: use this method with small segments.
+ *
+ * @param failOnCollision if true, the methods will return false when a collision occurs
+ *
+ * @return true if the destination is valid, false otherwise
+ *
+ *
+*/
+bool Map::CanReachPositionAndGetValidCoords(WorldObject const* source, float& destX, float& destY, float& destZ, bool failOnCollision) const
+{
+    return CanReachPositionAndGetValidCoords(source, source->GetPositionX(), source->GetPositionY(), source->GetPositionZ(), destX, destY, destZ, failOnCollision);
+}
+
+bool Map::CanReachPositionAndGetValidCoords(WorldObject const* source, float startX, float startY, float startZ, float& destX, float& destY, float& destZ, bool failOnCollision) const
+{
+    if (!CheckCollisionAndGetValidCoords(source, startX, startY, startZ, destX, destY, destZ, failOnCollision))
+        return false;
+
+    /** If it's not a Unit then we do not have to continue. */
+    Unit const* unit = source->ToUnit();
+    if (!unit)
+        return true;
+
+    /*
+     * Walkable checks
+     */
+    bool isWaterNext = IsInWater(source->GetPhaseMask(), destX, destY, destZ);
+    Creature const* creature = unit->ToCreature();
+    bool cannotEnterWater = isWaterNext && (creature && !creature->CanEnterWater());
+    bool cannotWalkOrFly = !isWaterNext && !source->ToPlayer() && !unit->CanFly() && (creature && !creature->CanWalk());
+    if (cannotEnterWater || cannotWalkOrFly)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * @brief validate the new destination and set coords
+ * Check if a given unit can face collisions in a specific segment
+ *
+ * @return true if the destination is valid, false otherwise
+ *
+ **/
+bool Map::CheckCollisionAndGetValidCoords(WorldObject const* source, float startX, float startY, float startZ, float& destX, float& destY, float& destZ, bool failOnCollision) const
+{
+    // Prevent invalid coordinates here, position is unchanged
+    if (!Trinity::IsValidMapCoord(startX, startY, startZ) || !Trinity::IsValidMapCoord(destX, destY, destZ))
+    {
+        TC_LOG_FATAL("maps", "Map::CheckCollisionAndGetValidCoords invalid coordinates startX: {}, startY: {}, startZ: {}, destX: {}, destY: {}, destZ: {}", startX, startY, startZ, destX, destY, destZ);
+        return false;
+    }
+
+    bool isWaterNext = IsInWater(source->GetPhaseMask(), destX, destY, destZ);
+
+    PathGenerator path(source);
+
+    // Use a detour raycast to get our first collision point
+    path.SetUseRaycast(true);
+    bool result = path.CalculatePath(destX, destY, destZ, false);
+
+    Unit const* unit = source->ToUnit();
+    bool notOnGround = path.GetPathType() & PATHFIND_NOT_USING_PATH
+        || isWaterNext || (unit && unit->IsFlying());
+
+    // Check for valid path types before we proceed
+    if (!result || (!notOnGround && path.GetPathType() & ~(PATHFIND_NORMAL | PATHFIND_SHORTCUT | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY_END)))
+    {
+        return false;
+    }
+
+    G3D::Vector3 endPos = path.GetPath().back();
+    destX = endPos.x;
+    destY = endPos.y;
+    destZ = endPos.z;
+
+    // collision check
+    bool collided = false;
+
+    // check static LOS
+    float halfHeight = source->GetCollisionHeight() * 0.5f;
+
+    // Unit is not on the ground, check for potential collision via vmaps
+    if (notOnGround)
+    {
+        bool col = VMAP::VMapFactory::createOrGetVMapManager()->getObjectHitPos(source->GetMapId(),
+            startX, startY, startZ + halfHeight,
+            destX, destY, destZ + halfHeight,
+            destX, destY, destZ, -CONTACT_DISTANCE);
+
+        destZ -= halfHeight;
+
+        // Collided with static LOS object, move back to collision point
+        if (col)
+            collided = true;
+    }
+
+    // check dynamic collision
+    bool col = source->GetMap()->getObjectHitPos(source->GetPhaseMask(),
+        startX, startY, startZ + halfHeight,
+        destX, destY, destZ + halfHeight,
+        destX, destY, destZ, -CONTACT_DISTANCE);
+
+    destZ -= halfHeight;
+
+    // Collided with a gameobject, move back to collision point
+    if (col)
+        collided = true;
+
+    float groundZ = VMAP_INVALID_HEIGHT_VALUE;
+    source->UpdateAllowedPositionZ(destX, destY, destZ, &groundZ);
+
+    // position has no ground under it (or is too far away)
+    if (groundZ <= INVALID_HEIGHT && unit && !unit->CanFly())
+    {
+        // fall back to gridHeight if any
+        float gridHeight = GetGridHeight(destX, destY);
+        if (gridHeight > INVALID_HEIGHT)
+        {
+            destZ = gridHeight + unit->GetHoverHeight();
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    return !failOnCollision || !collided;
+}
+
 void Map::LoadCorpseData()
 {
     CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CORPSES);
@@ -4809,14 +5116,25 @@ void Map::RemoveOldCorpses()
 
 void Map::SendZoneDynamicInfo(uint32 zoneId, Player* player) const
 {
+    uint32 override_weather_zone_id = GetWeatherZoneParent(zoneId);
+    if (override_weather_zone_id != zoneId)
+        SendZoneWeather(zoneId, player);
+
     auto itr = _zoneDynamicInfo.find(zoneId);
     if (itr == _zoneDynamicInfo.end())
+    {
+        // reset the weather if zone has no weather data.
+        // but don't do it if weather has an override
+        if (override_weather_zone_id == zoneId)
+            Weather::SendFineWeatherUpdateToPlayer(player);
         return;
+    }
 
     if (uint32 music = itr->second.MusicId)
         player->SendDirectMessage(WorldPackets::Misc::PlayMusic(music).Write());
 
-    SendZoneWeather(itr->second, player);
+    if (override_weather_zone_id == zoneId)
+        SendZoneWeather(itr->second, player);
 
     for (ZoneDynamicInfo::LightOverride const& lightOverride : itr->second.LightOverrides)
     {
@@ -4828,8 +5146,35 @@ void Map::SendZoneDynamicInfo(uint32 zoneId, Player* player) const
     }
 }
 
+uint32 Map::GetWeatherZoneParent(uint32 zoneId) const
+{
+    // hardcode some zones to get their weather data from another, like stormwind from elwynn.
+    switch (zoneId)
+    {
+    case 1519: // stormwind
+        zoneId = 12; // elwynn
+        break;
+        // durotar doesn't have weather?
+        // case 1637: // orgrimmar
+        //     zoneId = 14; // durotar
+        //     break;
+    case 1638: // thunder bluff
+        zoneId = 215; // mulgore
+        break;
+    case 1657: // darnassus
+        zoneId = 141; // teldrassil
+        break;
+    default:
+        break;
+    }
+    return zoneId;
+}
+
 void Map::SendZoneWeather(uint32 zoneId, Player* player) const
 {
+    // override weather for specific zones
+    zoneId = GetWeatherZoneParent(zoneId);
+
     auto itr = _zoneDynamicInfo.find(zoneId);
     if (itr == _zoneDynamicInfo.end())
         return;

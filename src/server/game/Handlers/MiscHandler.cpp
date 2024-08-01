@@ -383,7 +383,7 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
     for (WhoListPlayerInfo const& target : whoList)
     {
         // player can see member of other team only if CONFIG_ALLOW_TWO_SIDE_WHO_LIST
-        if (target.GetTeam() != team && !HasPermission(rbac::RBAC_PERM_TWO_SIDE_WHO_LIST))
+        if (target.GetTeam() != team && !sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_WHO_LIST))
             continue;
 
         // player can see MODERATOR, GAME MASTER, ADMINISTRATOR only if CONFIG_GM_IN_WHO_LIST
@@ -607,6 +607,23 @@ void WorldSession::HandleSetSelectionOpcode(WorldPacket& recvData)
             creature->SendMirrorSound(_player, 0);
 #endif
     _player->SetSelection(guid);
+
+    if (guid)
+    {
+        if (Spell* autoReapeatSpell = _player->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL))
+        {
+            if (autoReapeatSpell->m_targets.GetUnitTargetGUID() != guid)
+            {
+                if (Unit* unit = ObjectAccessor::GetUnit(*_player, guid))
+                {
+                    if (unit->IsAlive() && !_player->IsFriendlyTo(unit) && unit->isTargetableForAttack(true))
+                    {
+                        autoReapeatSpell->m_targets.SetUnitTarget(unit);
+                    }
+                }
+            }
+        }
+    }
 }
 
 void WorldSession::HandleStandStateChangeOpcode(WorldPacket& recvData)

@@ -713,17 +713,25 @@ void WorldSession::HandleCharDeleteOpcode(WorldPacket& recvData)
 
 void WorldSession::HandlePlayerLoginOpcode(WorldPacket& recvData)
 {
-    if (PlayerLoading() || GetPlayer() != nullptr)
+    /** @custom-start */
+    ObjectGuid playerGuid;
+    recvData >> playerGuid;
+
+    if ((sWorld->getBoolConfig(CONFIG_NAME_RESERVATION) && GetSecurity() == SEC_PLAYER) ||
+        PlayerLoading() || GetPlayer() != nullptr || !playerGuid.IsPlayer())
     {
-        TC_LOG_ERROR("network", "Player tries to login again, AccountId = {}", GetAccountId());
-        KickPlayer("WorldSession::HandlePlayerLoginOpcode Another client logging in");
-        return;
+        {
+            TC_LOG_ERROR("network", "Player tries to login again, AccountId = {}", GetAccountId());
+            WorldPacket data(SMSG_CHARACTER_LOGIN_FAILED, 1);
+            KickPlayer("WorldSession::HandlePlayerLoginOpcode Another client logging in");
+            data << (uint8)1;
+            SendPacket(&data);
+            return;
+            return;
+        }
     }
 
     m_playerLoading = true;
-    ObjectGuid playerGuid;
-
-    recvData >> playerGuid;
 
     if (!IsLegitCharacterForAccount(playerGuid))
     {
@@ -892,6 +900,9 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder const& holder)
 
     // Load pet if any (if player not alive and in taxi flight or another then pet will remember as temporary unsummoned)
     pCurrChar->LoadPet();
+
+    if (pCurrChar->IsInFlight())
+        pCurrChar->UnsummonPetTemporaryIfAny();
 
     // Set FFA PvP for non GM in non-rest mode
     if (sWorld->IsFFAPvPRealm() && !pCurrChar->IsGameMaster() && !pCurrChar->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_RESTING))
@@ -1921,7 +1932,7 @@ void WorldSession::HandleCharFactionOrRaceChangeCallback(std::shared_ptr<Charact
                     group->RemoveMember(factionChangeInfo->Guid);
             }
 
-            if (!HasPermission(rbac::RBAC_PERM_TWO_SIDE_ADD_FRIEND))
+            if (!sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_ADD_FRIEND))
             {
                 // Delete Friend List
                 stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_CHAR_SOCIAL_BY_GUID);

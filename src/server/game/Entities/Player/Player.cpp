@@ -1734,12 +1734,9 @@ bool Player::TeleportTo(uint32 mapid, float x, float y, float z, float orientati
             return true;
         }
 
-        if (!(options & TELE_TO_NOT_UNSUMMON_PET))
-        {
-            //same map, only remove pet if out of range for new position
-            if (pet && !pet->IsWithinDist3d(x, y, z, GetMap()->GetVisibilityRange()))
-                UnsummonPetTemporaryIfAny();
-        }
+        //same map, only remove pet if out of range for new position
+        if (pet && !pet->IsWithinDist3d(x, y, z, 50.0f))
+            UnsummonPetTemporaryIfAny();
 
         if (!IsAlive() && options & TELE_REVIVE_AT_TELEPORT)
             ResurrectPlayer(0.5f);
@@ -5564,7 +5561,7 @@ float Player::OCTRegenHPPerSpirit() const
     if (baseSpirit > 50)
         baseSpirit = 50;
     float moreSpirit = spirit - baseSpirit;
-    float regen = baseSpirit * baseRatio->Data + moreSpirit * moreRatio->Data;
+    float regen = (baseSpirit * baseRatio->Data + moreSpirit * moreRatio->Data) * 2;
     return regen;
 }
 
@@ -21211,7 +21208,7 @@ void Player::TextEmote(std::string_view text, WorldObject const* /*= nullptr*/, 
 
     WorldPacket data;
     ChatHandler::BuildChatPacket(data, CHAT_MSG_EMOTE, LANG_UNIVERSAL, this, this, _text);
-    SendMessageToSetInRange(&data, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_TEXTEMOTE), true, !GetSession()->HasPermission(rbac::RBAC_PERM_TWO_SIDE_INTERACTION_CHAT), true);
+    SendMessageToSetInRange(&data, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_TEXTEMOTE), true, !sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_EMOTE), true);
 }
 
 void Player::TextEmote(uint32 textId, WorldObject const* target /*= nullptr*/, bool /*isBossEmote = false*/)
@@ -21777,6 +21774,7 @@ bool Player::ActivateTaxiPathTo(std::vector<uint32> const& nodes, Creature* npc 
     }
 
     // Prepare to flight start now
+    UnsummonPetTemporaryIfAny();
 
     // stop combat at start taxi flight if any
     CombatStop();
@@ -24001,7 +23999,7 @@ void Player::UpdateVisibleGameobjectsOrSpellClicks()
         if (itr->IsGameObject())
         {
             if (GameObject* obj = ObjectAccessor::GetGameObject(*this, *itr))
-                if (sObjectMgr->IsGameObjectForQuests(obj->GetEntry()))
+                //if (sObjectMgr->IsGameObjectForQuests(obj->GetEntry())) // TODO: test this change
                     obj->BuildValuesUpdateBlockForPlayer(&udata, this);
         }
         else if (itr->IsCreatureOrVehicle())
@@ -26039,7 +26037,7 @@ void Player::ResummonPetTemporaryUnSummonedIfAny()
 
 bool Player::IsPetNeedBeTemporaryUnsummoned() const
 {
-    return !IsInWorld() || !IsAlive() || IsMounted() /*+in flight*/;
+    return !IsInWorld() || !IsAlive()/* || IsMounted() /*+in flight*/;
 }
 
 bool Player::CanSeeSpellClickOn(Creature const* c) const

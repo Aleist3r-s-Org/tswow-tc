@@ -259,11 +259,11 @@ bool ForcedDespawnDelayEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
 }
 
 Creature::Creature(bool isWorldObject): Unit(isWorldObject), MapObject(), m_groupLootTimer(0), lootingGroupLowGUID(0), m_PlayerDamageReq(0), m_lootRecipient(), m_lootRecipientGroup(0), _pickpocketLootRestore(0),
-    m_corpseRemoveTime(0), m_respawnTime(0), m_respawnDelay(300), m_corpseDelay(60), m_ignoreCorpseDecayRatio(false), m_wanderDistance(0.0f), m_boundaryCheckTime(2500), m_combatPulseTime(0), m_combatPulseDelay(0), m_reactState(REACT_AGGRESSIVE),
-    m_defaultMovementType(IDLE_MOTION_TYPE), m_spawnId(0), m_equipmentId(0), m_originalEquipmentId(0), m_AlreadyCallAssistance(false), m_AlreadySearchedAssistance(false), m_cannotReachTarget(false), m_cannotReachTimer(0),
-    m_meleeDamageSchoolMask(SPELL_SCHOOL_MASK_NORMAL), m_originalEntry(0), m_homePosition(), m_transportHomePosition(), m_creatureInfo(nullptr), m_creatureData(nullptr), _waypointPathId(0), _currentWaypointNodeInfo(0, 0),
-    m_formation(nullptr), m_triggerJustAppeared(true), m_respawnCompatibilityMode(false), _lastDamagedTime(0),
-    _regenerateHealth(true), _regenerateHealthLock(false), _isMissingCanSwimFlagOutOfCombat(false)
+    m_corpseRemoveTime(0), m_respawnTime(0), m_respawnDelay(300), m_corpseDelay(60), m_respawnAggroDelay(5000), m_ignoreCorpseDecayRatio(false), m_wanderDistance(0.0f), m_boundaryCheckTime(2500), m_backpedalTime(MOVE_BACKWARDS_CHECK_INTERVAL),
+    m_encircleTime(MOVE_CIRCLE_CHECK_INTERVAL), m_combatPulseTime(0), m_combatPulseDelay(0), m_reactState(REACT_AGGRESSIVE), m_defaultMovementType(IDLE_MOTION_TYPE), m_spawnId(0), m_equipmentId(0), m_originalEquipmentId(0),
+    m_AlreadyCallAssistance(false), m_AlreadySearchedAssistance(false), m_cannotReachTarget(false), m_cannotReachTimer(0), m_meleeDamageSchoolMask(SPELL_SCHOOL_MASK_NORMAL), m_originalEntry(0), m_homePosition(),
+    m_transportHomePosition(), m_creatureInfo(nullptr), m_creatureData(nullptr), m_detectionDistance(20.0f), _waypointPathId(0), m_formation(nullptr), m_triggerJustAppeared(true), m_respawnCompatibilityMode(false),
+    _lastDamagedTime(0), _currentWaypointNodeInfo(0, 0), _regenerateHealth(true), _regenerateHealthLock(false), _isMissingCanSwimFlagOutOfCombat(false), m_assistanceTimer(0)
 {
     m_regenTimer = CREATURE_REGEN_INTERVAL;
     m_valuesCount = UNIT_END;
@@ -728,6 +728,10 @@ bool Creature::UpdateEntry(uint32 entry, CreatureData const* data /*= nullptr*/,
     //We must update last scriptId or it looks like we reloaded a script, breaking some things such as gossip temporarily
     LastUsedScriptID = GetScriptId();
 
+    SetDetectionDistance(cInfo->detection_range);
+
+    SetCorpseDelay(cInfo->corpse_delay);
+
     return true;
 }
 
@@ -860,6 +864,11 @@ void Creature::Update(uint32 diff)
         {
             Unit::Update(diff);
 
+            if (GetRespawnAggroDelay() <= diff)
+                SetRespawnAggroDelay(0);
+            else
+                SetRespawnAggroDelay(GetRespawnAggroDelay() - diff);
+
             // creature can be dead after Unit::Update call
             // CORPSE/DEAD state will processed at next tick (in other case death timer will be updated unexpectedly)
             if (!IsAlive())
@@ -883,6 +892,22 @@ void Creature::Update(uint32 diff)
                     m_boundaryCheckTime = 2500;
                 } else
                     m_boundaryCheckTime -= diff;
+
+                if (diff >= m_backpedalTime)
+                {
+                    AI()->Backpedal();
+                    m_backpedalTime = MOVE_BACKWARDS_CHECK_INTERVAL;
+                }
+                else
+                    m_backpedalTime -= diff;
+
+                if (diff >= m_encircleTime)
+                {
+                    AI()->Encircle();
+                    m_encircleTime = urand(MOVE_CIRCLE_CHECK_INTERVAL, MOVE_CIRCLE_CHECK_INTERVAL * 2);
+                }
+                else
+                    m_encircleTime -= diff;
             }
 
             // if periodic combat pulse is enabled and we are both in combat and in a dungeon, do this now
@@ -913,12 +938,37 @@ void Creature::Update(uint32 diff)
                 }
             }
 
+            if (m_assistanceTimer)
+            {
+                if (m_assistanceTimer <= diff)
+                {
+                    if (CanPeriodicallyCallForAssistance())
+                    {
+                        SetNoCallAssistance(false);
+                        CallAssistance();
+                    }
+                    m_assistanceTimer = sWorld->getIntConfig(CONFIG_CREATURE_FAMILY_ASSISTANCE_PERIOD);
+                }
+                else
+                {
+                    m_assistanceTimer -= diff;
+                }
+            }
+
             Unit::AIUpdateTick(diff);
 
             // creature can be dead after UpdateAI call
             // CORPSE/DEAD state will processed at next tick (in other case death timer will be updated unexpectedly)
             if (!IsAlive())
                 break;
+
+            if (CanNotReachTarget() && !IsInEvadeMode() && !GetMap()->IsRaid())
+            {
+                m_cannotReachTimer += diff;
+                if (m_cannotReachTimer >= CREATURE_NOPATH_EVADE_TIME)
+                    if (CreatureAI* ai = AI())
+                        ai->EnterEvadeMode(CreatureAI::EVADE_REASON_NO_PATH);
+            }
 
             if (m_regenTimer > 0)
             {
@@ -935,7 +985,7 @@ void Creature::Update(uint32 diff)
                     // regenerate health if not in combat or if polymorphed)
                     if (!IsEngaged() || IsPolymorphed())
                         RegenerateHealth();
-                    else if (CanNotReachTarget())
+                    else if (CanNotReachTarget() && m_cannotReachTimer >= CREATURE_NOPATH_REGEN_TIME)
                     {
                         // regenerate health if cannot reach the target and the setting is set to do so.
                         // this allows to disable the health regen of raid bosses if pathfinding has issues for whatever reason
@@ -956,19 +1006,25 @@ void Creature::Update(uint32 diff)
 
                 m_regenTimer = CREATURE_REGEN_INTERVAL;
             }
-
-            if (CanNotReachTarget() && !IsInEvadeMode() && !GetMap()->IsRaid())
-            {
-                m_cannotReachTimer += diff;
-                if (m_cannotReachTimer >= CREATURE_NOPATH_EVADE_TIME)
-                    if (CreatureAI* ai = AI())
-                        ai->EnterEvadeMode(CreatureAI::EVADE_REASON_NO_PATH);
-            }
             break;
         }
         default:
             break;
     }
+}
+
+bool Creature::IsFreeToMove()
+{
+    uint32 moveFlags = m_movementInfo.GetMovementFlags();
+    // Do not reposition ourself when we are not allowed to move
+    if ((IsMovementPreventedByCasting() || isMoving() || !CanFreeMove()) &&
+        (GetMotionMaster()->GetCurrentMovementGeneratorType() != CHASE_MOTION_TYPE ||
+            moveFlags & MOVEMENTFLAG_SPLINE_ENABLED))
+    {
+        return false;
+    }
+
+    return true;
 }
 
 void Creature::Regenerate(Powers power)
@@ -1177,25 +1233,6 @@ bool Creature::Create(ObjectGuid::LowType guidlow, Map* map, uint32 phaseMask, u
     if (GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_DUNGEON_BOSS && map->IsDungeon())
         m_respawnDelay = 0; // special value, prevents respawn for dungeon bosses unless overridden
 
-    switch (GetCreatureTemplate()->rank)
-    {
-        case CREATURE_ELITE_RARE:
-            m_corpseDelay = sWorld->getIntConfig(CONFIG_CORPSE_DECAY_RARE);
-            break;
-        case CREATURE_ELITE_ELITE:
-            m_corpseDelay = sWorld->getIntConfig(CONFIG_CORPSE_DECAY_ELITE);
-            break;
-        case CREATURE_ELITE_RAREELITE:
-            m_corpseDelay = sWorld->getIntConfig(CONFIG_CORPSE_DECAY_RAREELITE);
-            break;
-        case CREATURE_ELITE_WORLDBOSS:
-            m_corpseDelay = sWorld->getIntConfig(CONFIG_CORPSE_DECAY_WORLDBOSS);
-            break;
-        default:
-            m_corpseDelay = sWorld->getIntConfig(CONFIG_CORPSE_DECAY_NORMAL);
-            break;
-    }
-
     //! Need to be called after LoadCreaturesAddon - MOVEMENTFLAG_HOVER is set there
     m_positionZ += GetHoverOffset();
 
@@ -1255,7 +1292,7 @@ Unit* Creature::SelectVictim()
     else
         return nullptr;
 
-    if (target && _IsTargetAcceptable(target) && CanCreatureAttack(target))
+    if (target && _IsTargetAcceptable(target) && CanCreatureAttack(target, true, false))
     {
         if (!HasSpellFocus())
             SetInFront(target);
@@ -2016,6 +2053,9 @@ bool Creature::CanStartAttack(Unit const* who, bool force) const
     if (IsCivilian())
         return false;
 
+    if (GetRespawnAggroDelay() != 0 && !force)
+        return false;
+
     // This set of checks is should be done only for creatures
     if ((IsImmuneToNPC() && !who->HasUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED))
         || (IsImmuneToPC() && who->HasUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED)))
@@ -2036,7 +2076,7 @@ bool Creature::CanStartAttack(Unit const* who, bool force) const
         if (!_IsTargetAcceptable(who))
             return false;
 
-        if (IsNeutralToAll() || !IsWithinDistInMap(who, GetAttackDistance(who) + m_CombatDistance))
+        if (IsNeutralToAll() || !IsWithinDistInMap(who, GetAttackDistance(who) + m_CombatDistance, true, false, false))
             return false;
     }
 
@@ -2084,7 +2124,7 @@ float Creature::GetAttackDistance(Unit const* player) const
 
     // The aggro radius for creatures with equal level as the player is 20 yards.
     // The combatreach should not get taken into account for the distance so we drop it from the range (see Supremus as expample)
-    float baseAggroDistance = 20.0f - GetCombatReach();
+    float baseAggroDistance = GetDetectionRange() - GetCombatReach();
 
     // + - 1 yard for each level difference between player and creature
     float aggroRadius = baseAggroDistance + float(levelDifference);
@@ -2117,7 +2157,7 @@ void Creature::setDeathState(DeathState s)
 
     if (s == JUST_DIED)
     {
-        m_corpseRemoveTime = GameTime::GetGameTime() + m_corpseDelay;
+        m_corpseRemoveTime = GameTime::GetGameTime() + GetCorpseDelay();
 
         uint32 respawnDelay = m_respawnDelay;
         if (uint32 scalingMode = sWorld->getIntConfig(CONFIG_RESPAWN_DYNAMICMODE))
@@ -2129,7 +2169,7 @@ void Creature::setDeathState(DeathState s)
             if (IsDungeonBoss() && !m_respawnDelay)
                 m_respawnTime = std::numeric_limits<time_t>::max(); // never respawn in this instance
             else
-                m_respawnTime = GameTime::GetGameTime() + respawnDelay + m_corpseDelay;
+                m_respawnTime = GameTime::GetGameTime() + respawnDelay + GetCorpseDelay();
         }
         else
         {
@@ -2151,7 +2191,12 @@ void Creature::setDeathState(DeathState s)
 
         setActive(false);
 
-        SetNoSearchAssistance(false);
+        /** @custom-start */
+        if (HasSearchedAssistance())
+        {
+            SetNoSearchAssistance(false);
+        }
+        /** @custom-end */
 
         //Dismiss group if is leader
         if (m_formation && m_formation->GetLeader() == this)
@@ -2226,6 +2271,7 @@ void Creature::Respawn(bool force)
         {
             TC_LOG_DEBUG("entities.unit", "Respawning creature {} ({})", GetName(), GetGUID().ToString());
             m_respawnTime = 0;
+            SetRespawnAggroDelay(5000);
             ResetPickPocketRefillTimer();
             loot.clear();
 
@@ -2609,7 +2655,7 @@ void Creature::SaveRespawnTime(uint32 forceDelay)
 }
 
 // this should not be called by petAI or
-bool Creature::CanCreatureAttack(Unit const* victim, bool /*force*/) const
+bool Creature::CanCreatureAttack(Unit const* victim, bool /*force*/, bool checkAccessible) const
 {
     if (!victim->IsInMap(this))
         return false;
@@ -2617,7 +2663,7 @@ bool Creature::CanCreatureAttack(Unit const* victim, bool /*force*/) const
     if (!IsValidAttackTarget(victim))
         return false;
 
-    if (!victim->isInAccessiblePlaceFor(this))
+    if (checkAccessible && !victim->isInAccessiblePlaceFor(this))
         return false;
 
     if (CreatureAI* ai = AI())
@@ -2897,7 +2943,7 @@ void Creature::AllLootRemovedFromCorpse()
     if (loot.loot_type == LOOT_SKINNING)
         m_corpseRemoveTime = now;
     else
-        m_corpseRemoveTime = now + uint32(m_corpseDelay * decayRate);
+        m_corpseRemoveTime = now + uint32(GetCorpseDelay() * decayRate);
 
     m_respawnTime = std::max<time_t>(m_corpseRemoveTime + m_respawnDelay, m_respawnTime);
 }
@@ -3049,6 +3095,11 @@ float Creature::GetPetChaseDistance() const
             if (spellInfo->GetRecoveryTime() == 0 && spellInfo->RangeEntry->ID != 1 /*Self*/ && spellInfo->RangeEntry->ID != 2 /*Combat Range*/ && spellInfo->GetMaxRange() > range)
                 range = spellInfo->GetMaxRange();
         }
+
+        /** @custom-start */
+        if (GetEntry() == 416 || GetEntry() == 510 || GetEntry() == 37994) // Imp / Water Ele
+            range = 20.0f;
+        /** @custom-end */
     }
 
     return range;
@@ -3205,7 +3256,9 @@ float Creature::GetAggroRange(Unit const* target) const
             levelDiff = -25;
 
         // The base aggro radius for mob of same level
-        float aggroRadius = 20;
+        float aggroRadius = GetDetectionRange();
+        if (aggroRadius < 1)
+            return 0.0f;
 
         // Aggro Radius varies with level difference at a rate of roughly 1 yard/level
         aggroRadius -= (float)levelDiff;
@@ -3609,4 +3662,21 @@ void Creature::ExitVehicle(Position const* /*exitPosition*/)
     // if the creature exits a vehicle, set it's home position to the
     // exited position so it won't run away (home) and evade if it's hostile
     SetHomePosition(GetPosition());
+}
+
+bool Creature::CanPeriodicallyCallForAssistance() const
+{
+    if (!IsInCombat())
+        return false;
+
+    if (HasUnitState(UNIT_STATE_DIED | UNIT_STATE_POSSESSED))
+        return false;
+
+    if (!CanHaveThreatList())
+        return false;
+
+    if (IsSummon() && GetMap()->Instanceable())
+        return false;
+
+    return true;
 }

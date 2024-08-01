@@ -562,7 +562,7 @@ void WorldSession::LogoutPlayer(bool save)
             guild->HandleMemberLogout(this);
 
         ///- Remove pet
-        _player->RemovePet(nullptr, PET_SAVE_AS_CURRENT, true);
+        _player->RemovePet(nullptr, PET_SAVE_AS_CURRENT, false);
 
         ///- Clear whisper whitelist
         _player->ClearWhisperWhiteList();
@@ -584,9 +584,6 @@ void WorldSession::LogoutPlayer(bool save)
 
         ///- Leave all channels before player delete...
         _player->CleanupChannels();
-
-        ///- If the player is in a group (or invited), remove him. If the group if then only 1 person, disband the group.
-        _player->UninviteFromGroup();
 
         //! Send update to group and reset stored max enchanting level
         if (Group* group = _player->GetGroup())

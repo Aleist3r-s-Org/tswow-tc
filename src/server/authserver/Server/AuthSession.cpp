@@ -404,7 +404,7 @@ void AuthSession::LogonChallengeCallback(PreparedQueryResult result)
     );
 
     // Fill the response packet with the result
-    if (AuthHelper::IsAcceptedClientBuild(_build))
+    if (AuthHelper::IsAcceptedClientBuild(_build) && GetLocaleByName(_localizationName) == LOCALE_enUS)
     {
         pkt << uint8(WOW_SUCCESS);
 

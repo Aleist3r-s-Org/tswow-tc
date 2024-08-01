@@ -416,6 +416,11 @@ void WorldSession::HandleCancelCastOpcode(WorldPackets::Spells::CancelCast& canc
 
     if (_player->IsNonMeleeSpellCast(false))
         _player->InterruptNonMeleeSpells(false, cancelCast.SpellID, false);
+
+    /** @custom-start */
+    if (_player->IsNextSwingSpellCasted())
+        _player->InterruptSpell(CURRENT_MELEE_SPELL);
+    /** @custom-end */
 }
 
 void WorldSession::HandleCancelAuraOpcode(WorldPackets::Spells::CancelAura& cancelAura)

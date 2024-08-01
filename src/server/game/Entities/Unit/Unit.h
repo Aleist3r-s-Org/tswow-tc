@@ -1469,6 +1469,10 @@ class TC_GAME_API Unit : public WorldObject
         void InterruptSpell(CurrentSpellTypes spellType, bool withDelayed = true, bool withInstant = true);
         void FinishSpell(CurrentSpellTypes spellType, bool ok = true);
 
+        /** @custom-start */
+        bool IsNextSwingSpellCasted() const;
+        /** @custom-end */
+
         // set withDelayed to true to account delayed spells as cast
         // delayed+channeled spells are always accounted as cast
         // we can skip channeled or delayed checks using flags
@@ -1494,6 +1498,7 @@ class TC_GAME_API Unit : public WorldObject
 
         ShapeshiftForm GetShapeshiftForm() const { return ShapeshiftForm(GetByteValue(UNIT_FIELD_BYTES_2, UNIT_BYTES_2_OFFSET_SHAPESHIFT_FORM)); }
         void SetShapeshiftForm(ShapeshiftForm form);
+        bool IsShapeShifted() const; // mirrors clientside logic, moonkin form not counted as shapeshift
 
         bool IsInFeralForm() const;
 
@@ -1657,6 +1662,7 @@ class TC_GAME_API Unit : public WorldObject
         static void CalcHealAbsorb(HealInfo& healInfo);
 
         void UpdateSpeed(UnitMoveType mtype);
+        float GetSpeedInMotion() const;
         float GetSpeed(UnitMoveType mtype) const;
         float GetSpeedRate(UnitMoveType mtype) const { return m_speed_rate[mtype]; }
         void SetSpeed(UnitMoveType mtype, float newValue);
@@ -1765,6 +1771,7 @@ class TC_GAME_API Unit : public WorldObject
         bool isTurning() const  { return m_movementInfo.HasMovementFlag(MOVEMENTFLAG_MASK_TURNING); }
         virtual bool CanFly() const = 0;
         bool IsFlying() const   { return m_movementInfo.HasMovementFlag(MOVEMENTFLAG_FLYING | MOVEMENTFLAG_DISABLE_GRAVITY); }
+        float GetHoverHeight() const { return IsHovering() ? GetFloatValue(UNIT_FIELD_HOVERHEIGHT) : 0.0f; }
         bool IsFalling() const;
         virtual bool CanEnterWater() const = 0;
         virtual bool CanSwim() const;
@@ -1824,6 +1831,8 @@ class TC_GAME_API Unit : public WorldObject
         virtual void Whisper(uint32 textId, Player* target, bool isBossWhisper = false);
 
         float GetCollisionHeight() const override;
+        float GetCollisionWidth() const override;
+        float GetCollisionRadius() const override;
         uint32 GetVirtualItemId(uint32 slot) const;
         void SetVirtualItem(uint32 slot, uint32 itemId);
 

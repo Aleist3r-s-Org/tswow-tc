@@ -471,7 +471,8 @@ void Unit::Update(uint32 p_time)
             uint32 count = itr->second;
             extraAttacksTargets.erase(itr);
             if (Unit* victim = ObjectAccessor::GetUnit(*this, targetGuid))
-                HandleProcExtraAttackFor(victim, count);
+                if (victim->IsWithinMeleeRange(this))
+                    HandleProcExtraAttackFor(victim, count);
         }
         _lastExtraAttackSpell = 0;
     }
@@ -1555,7 +1556,7 @@ void Unit::DealMeleeDamage(CalcDamageInfo* damageInfo, bool durabilityLoss)
         uint32 const victimDefense = victim->GetDefenseSkillValue();
         uint32 const attackerMeleeSkill = GetMaxSkillValueForLevel();
 
-        chance *= attackerMeleeSkill / float(victimDefense) * 0.16f;
+        chance += (attackerMeleeSkill - float(victimDefense)) * 0.16f;
 
         // -probability is between 0% and 40%
         RoundToInterval(chance, 0.0f, 40.0f);
@@ -3169,6 +3170,16 @@ void Unit::FinishSpell(CurrentSpellTypes spellType, bool ok /*= true*/)
     spell->finish(ok);
 }
 
+/** @custom-start */
+bool Unit::IsNextSwingSpellCasted() const
+{
+    if (m_currentSpells[CURRENT_MELEE_SPELL] && m_currentSpells[CURRENT_MELEE_SPELL]->m_spellInfo->IsNextMeleeSwingSpell())
+        return (true);
+
+    return (false);
+}
+/** @custom-end */
+
 bool Unit::IsNonMeleeSpellCast(bool withDelayed, bool skipChanneled, bool skipAutorepeat, bool isAutoshoot, bool skipInstant) const
 {
     // We don't do loop here to explicitly show that melee spell is excluded.
@@ -3257,7 +3268,12 @@ bool Unit::isInBackInMap(Unit const* target, float distance, float arc) const
 
 bool Unit::isInAccessiblePlaceFor(Creature const* c) const
 {
-    if (IsInWater())
+    ZLiquidStatus liquidStatus = GetLiquidStatus();
+
+    bool isInWater = (liquidStatus & MAP_LIQUID_STATUS_IN_CONTACT) != 0;
+
+    // In water or jumping in water
+    if (isInWater || (liquidStatus == LIQUID_MAP_ABOVE_WATER && (IsFalling() || (ToPlayer() && ToPlayer()->IsFalling()))))
         return c->CanEnterWater();
     else
         return c->CanWalk() || c->CanFly();
@@ -5722,6 +5738,8 @@ bool Unit::Attack(Unit* victim, bool meleeAttack)
         creature->SendAIReaction(AI_REACTION_HOSTILE);
         creature->CallAssistance();
 
+        creature->SetAssistanceTimer(sWorld->getIntConfig(CONFIG_CREATURE_FAMILY_ASSISTANCE_PERIOD));
+
         // Remove emote state - will be restored on creature reset
         SetEmoteState(EMOTE_ONESHOT_NONE);
     }
@@ -7059,7 +7077,7 @@ uint32 Unit::SpellDamageBonusTaken(Unit* caster, SpellInfo const* spellProto, ui
         {
             TakenTotalMod *= GetTotalAuraMultiplier(SPELL_AURA_MOD_DAMAGE_FROM_CASTER, [caster, spellProto](AuraEffect const* aurEff) -> bool
             {
-                if (aurEff->GetCasterGUID() == caster->GetGUID() && aurEff->IsAffectedOnSpell(spellProto))
+                if (aurEff->GetCasterGUID() == caster->GetGUID() && aurEff->IsAffectedOnSpell(spellProto) && (aurEff->GetMiscValue() & spellProto->GetSchoolMask()))
                     return true;
                 return false;
             });
@@ -8007,6 +8025,17 @@ uint32 Unit::MeleeDamageBonusDone(Unit* victim, uint32 pdamage, WeaponAttackType
 
     SpellSchoolMask schoolMask = spellProto ? spellProto->GetSchoolMask() : damageSchoolMask;
 
+    /** @custom-start */
+    // for wands, use the weapon damage type instead of the shooting spell school
+    if (spellProto)
+    {
+        if (spellProto->EquippedItemSubClassMask == (1 << ITEM_SUBCLASS_WEAPON_WAND))
+        {
+            schoolMask = damageSchoolMask;
+        }
+    }
+    /** @custom-end */
+
     // mods for SPELL_SCHOOL_MASK_NORMAL are already factored in base melee damage calculation
     if (!(schoolMask & SPELL_SCHOOL_MASK_NORMAL))
     {
@@ -8126,9 +8155,12 @@ uint32 Unit::MeleeDamageBonusTaken(Unit* attacker, uint32 pdamage, WeaponAttackT
         return 0;
 
     int32 TakenFlatBenefit = 0;
+    uint32 meleeDamageSchoolMask = spellProto ? spellProto->SchoolMask : attacker->GetMeleeDamageSchoolMask();
 
     // ..taken
-    TakenFlatBenefit += GetTotalAuraModifierByMiscMask(SPELL_AURA_MOD_DAMAGE_TAKEN, attacker->GetMeleeDamageSchoolMask());
+    /** @custom-start */
+    TakenFlatBenefit += GetTotalAuraModifierByMiscMask(SPELL_AURA_MOD_DAMAGE_TAKEN, damageSchoolMask);
+    /** @custom-end */
 
     if (attType != RANGED_ATTACK)
         TakenFlatBenefit += GetTotalAuraModifier(SPELL_AURA_MOD_MELEE_DAMAGE_TAKEN);
@@ -8142,7 +8174,9 @@ uint32 Unit::MeleeDamageBonusTaken(Unit* attacker, uint32 pdamage, WeaponAttackT
     float TakenTotalMod = 1.0f;
 
     // ..taken
-    TakenTotalMod *= GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_DAMAGE_PERCENT_TAKEN, attacker->GetMeleeDamageSchoolMask());
+    /** @custom-start */
+    TakenTotalMod *= GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_DAMAGE_PERCENT_TAKEN, damageSchoolMask);
+    /** @custom-end */
 
     // .. taken pct (special attacks)
     if (spellProto)
@@ -8150,7 +8184,7 @@ uint32 Unit::MeleeDamageBonusTaken(Unit* attacker, uint32 pdamage, WeaponAttackT
         // From caster spells
         TakenTotalMod *= GetTotalAuraMultiplier(SPELL_AURA_MOD_DAMAGE_FROM_CASTER, [attacker, spellProto](AuraEffect const* aurEff) -> bool
         {
-            if (aurEff->GetCasterGUID() == attacker->GetGUID() && aurEff->IsAffectedOnSpell(spellProto))
+            if (aurEff->GetCasterGUID() == attacker->GetGUID() && aurEff->IsAffectedOnSpell(spellProto) && (aurEff->GetMiscValue() & spellProto->GetSchoolMask()))
                 return true;
             return false;
         });
@@ -8302,14 +8336,7 @@ void Unit::Mount(uint32 mount, uint32 VehicleId, uint32 creatureEntry)
         // unsummon pet
         Pet* pet = player->GetPet();
         if (pet)
-        {
-            Battleground* bg = ToPlayer()->GetBattleground();
-            // don't unsummon pet in arena but SetFlag UNIT_FLAG_STUNNED to disable pet's interface
-            if (bg && bg->isArena())
-                pet->SetUnitFlag(UNIT_FLAG_STUNNED);
-            else
-                player->UnsummonPetTemporaryIfAny();
-        }
+            pet->SetUnitFlag(UNIT_FLAG_STUNNED); // disable pet's interface
 
         // if we have charmed npc, stun him also (everywhere)
         if (Unit* charm = player->GetCharmed())
@@ -8728,23 +8755,21 @@ void Unit::UpdateSpeed(UnitMoveType mtype)
             break;
     }
 
+    /** @custom-start */
+    int32 healthSlow = 0;
+
     if (Creature* creature = ToCreature())
     {
-        if (creature->HasUnitTypeMask(UNIT_MASK_MINION) && !creature->IsInCombat())
-        {
-            if (GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE)
-            {
-                Unit* followed = ASSERT_NOTNULL(dynamic_cast<AbstractFollower*>(GetMotionMaster()->GetCurrentMovementGenerator()))->GetTarget();
-                if (followed && followed->GetGUID() == GetOwnerGUID() && !followed->IsInCombat())
-                {
-                    float ownerSpeed = followed->GetSpeedRate(mtype);
-                    if (speed < ownerSpeed || creature->IsWithinDist3d(followed, 10.0f))
-                        speed = ownerSpeed;
-                    speed *= std::min(std::max(1.0f, 0.75f + (GetDistance(followed) - PET_FOLLOW_DIST) * 0.05f), 1.3f);
-                }
-            }
-        }
+        uint32 immuneMask = creature->GetCreatureTemplate()->MechanicImmuneMask;
+        if (!IsPet() && !(IsControlledByPlayer() && IsVehicle()) && !(immuneMask & (1 << (MECHANIC_SNARE - 1))) && !(creature->IsDungeonBoss()))
+            healthSlow = (int32)std::min(0.0f, (1.66f * (GetHealthPct() - 30.0f)));
     }
+
+    if (healthSlow)
+    {
+        AddPct(speed, healthSlow);
+    }
+    /** @custom-end */
 
     // Apply strongest slow aura mod to speed
     int32 slow = GetMaxNegativeAuraModifier(SPELL_AURA_MOD_DECREASE_SPEED);
@@ -8763,6 +8788,11 @@ void Unit::UpdateSpeed(UnitMoveType mtype)
     }
 
     SetSpeedRate(mtype, speed);
+}
+
+float Unit::GetSpeedInMotion() const
+{
+    return (movespline->Finalized() ? GetSpeed(Movement::SelectSpeedType(GetUnitMovementFlags())) : movespline->Velocity());
 }
 
 float Unit::GetSpeed(UnitMoveType mtype) const
@@ -8884,6 +8914,9 @@ void Unit::setDeathState(DeathState s)
 void Unit::AtExitCombat()
 {
     RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_LEAVE_COMBAT);
+
+    if (Creature* creature = ToCreature())
+        creature->SetAssistanceTimer(0);
 }
 
 void Unit::AtTargetAttacked(Unit* target, bool canInitialAggro)
@@ -9062,6 +9095,17 @@ uint32 Unit::GetCreatureTypeMask() const
 void Unit::SetShapeshiftForm(ShapeshiftForm form)
 {
     SetByteValue(UNIT_FIELD_BYTES_2, UNIT_BYTES_2_OFFSET_SHAPESHIFT_FORM, form);
+}
+
+bool Unit::IsShapeShifted() const
+{
+    // Mirroring clientside gameplay logic
+    if (ShapeshiftForm form = GetShapeshiftForm())
+    {
+        if (SpellShapeshiftFormEntry const* ssEntry = sSpellShapeshiftFormStore.LookupEntry(form))
+            return !(ssEntry->Flags & SHAPESHIFT_FLAG_STANCE);
+    }
+    return false;
 }
 
 bool Unit::IsInFeralForm() const
@@ -9469,7 +9513,18 @@ void Unit::SetHealth(uint32 val)
             val = maxHealth;
     }
 
+    /** @custom-start */
+    float prevHealthPct = GetHealthPct();
+    /** @custom-end */
+
     SetUInt32Value(UNIT_FIELD_HEALTH, val);
+
+    /** @custom-start */
+    if (GetTypeId() == TYPEID_UNIT && (prevHealthPct < 30.0 || HealthBelowPct(30)))
+    {
+        UpdateSpeed(MOVE_RUN);
+    }
+    /** @custom-end */
 
     // group update
     if (Player* player = ToPlayer())
@@ -10203,13 +10258,13 @@ void Unit::ProcSkillsAndReactives(bool isVictim, Unit* procTarget, uint32 typeMa
            )
         {
             // On melee based hit/miss/resist need update skill (for victim and attacker)
-            if (hitMask & (PROC_HIT_NORMAL | PROC_HIT_MISS | PROC_HIT_FULL_RESIST))
+            if (hitMask & (PROC_HIT_NORMAL | PROC_HIT_MISS | PROC_HIT_FULL_RESIST | PROC_HIT_DODGE | PROC_HIT_PARRY))
             {
                 if (procTarget->GetTypeId() != TYPEID_PLAYER && !procTarget->IsCritter())
                     ToPlayer()->UpdateCombatSkills(procTarget, attType, isVictim);
             }
-            // Update defense if player is victim and parry/dodge/block
-            else if (isVictim && (hitMask & (PROC_HIT_DODGE | PROC_HIT_PARRY | PROC_HIT_BLOCK)))
+            // Update defense if player is victim and block
+            else if (isVictim && (hitMask & PROC_HIT_BLOCK))
                 ToPlayer()->UpdateCombatSkills(procTarget, attType, true);
         }
         // If exist crit/parry/dodge/block need update aura state (for victim and attacker)
@@ -11344,7 +11399,7 @@ bool Unit::InitTamedPet(Pet* pet, uint8 level, uint32 spell_id)
                 {
                     // the reset time is set but not added to the scheduler
                     // until the players leave the instance
-                    time_t resettime = GameTime::GetGameTime() + 2 * HOUR;
+                    time_t resettime = GameTime::GetGameTime() + sWorld->getIntConfig(CONFIG_INSTANCE_NORMAL_RESET_DELAY);
                     if (InstanceSave* save = sInstanceSaveMgr->GetInstanceSave(creature->GetInstanceId()))
                         if (save->GetResetTime() < resettime)
                             save->SetResetTime(resettime);
@@ -13056,7 +13111,7 @@ bool Unit::CanSwim() const
     // Mirror client behavior, if this method returns false then client will not use swimming animation and for players will apply gravity as if there was no water
     if (HasUnitFlag(UNIT_FLAG_CANNOT_SWIM))
         return false;
-    if (HasUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED)) // is player
+    if (HasUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED) || HasUnitFlag(UNIT_FLAG_POSSESSED)) // is player
         return true;
     if (HasUnitFlag2(UNIT_FLAG2_UNUSED_6))
         return false;
@@ -13959,6 +14014,55 @@ void Unit::Whisper(uint32 textId, Player* target, bool isBossWhisper /*= false*/
     WorldPacket data;
     ChatHandler::BuildChatPacket(data, isBossWhisper ? CHAT_MSG_RAID_BOSS_WHISPER : CHAT_MSG_MONSTER_WHISPER, LANG_UNIVERSAL, this, target, bct->GetText(locale, GetGender()), 0, "", locale);
     target->SendDirectMessage(&data);
+}
+
+/**
+ * @brief this method gets the diameter of a Unit by DB if any value is defined, otherwise it gets the value by the DBC
+ *
+ * If the player is mounted the diameter also takes in consideration the mount size
+ *
+ * @return float The diameter of a unit
+ */
+float Unit::GetCollisionWidth() const
+{
+    if (GetTypeId() == TYPEID_PLAYER)
+        return GetObjectSize();
+
+    float scaleMod = GetObjectScale(); // 99% sure about this
+    float objectSize = GetObjectSize();
+    float defaultSize = DEFAULT_PLAYER_BOUNDING_RADIUS * scaleMod;
+
+    //! Dismounting case - use basic default model data
+    CreatureDisplayInfoEntry const* displayInfo = sCreatureDisplayInfoStore.AssertEntry(GetNativeDisplayId());
+    CreatureModelDataEntry const* modelData = sCreatureModelDataStore.AssertEntry(displayInfo->ModelID);
+
+    if (IsMounted())
+    {
+        if (CreatureDisplayInfoEntry const* mountDisplayInfo = sCreatureDisplayInfoStore.LookupEntry(GetUInt32Value(UNIT_FIELD_MOUNTDISPLAYID)))
+        {
+            if (CreatureModelDataEntry const* mountModelData = sCreatureModelDataStore.LookupEntry(mountDisplayInfo->ModelID))
+            {
+                if (G3D::fuzzyGt(mountModelData->CollisionWidth, modelData->CollisionWidth))
+                    modelData = mountModelData;
+            }
+        }
+    }
+
+    float collisionWidth = scaleMod * modelData->CollisionWidth * modelData->ModelScale * displayInfo->CreatureModelScale * 2;
+    // if the objectSize is the default value or the creature is mounted and we have a DBC value, then we can retrieve DBC value instead
+    return G3D::fuzzyGt(collisionWidth, 0.0f) && (G3D::fuzzyEq(objectSize, defaultSize) || IsMounted()) ? collisionWidth : objectSize;
+}
+
+/**
+ * @brief this method gets the radius of a Unit by DB if any value is defined, otherwise it gets the value by the DBC
+ *
+ * If the player is mounted the radius also takes in consideration the mount size
+ *
+ * @return float The radius of a unit
+ */
+float Unit::GetCollisionRadius() const
+{
+    return GetCollisionWidth() / 2;
 }
 
 // Returns collisionheight of the unit. If it is 0, it returns DEFAULT_COLLISION_HEIGHT.

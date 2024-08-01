@@ -286,7 +286,8 @@ struct TC_GAME_API CreatureMovementData
 
 static const uint32 CREATURE_REGEN_INTERVAL = 2 * IN_MILLISECONDS;
 static const uint32 PET_FOCUS_REGEN_INTERVAL = 4 * IN_MILLISECONDS;
-static const uint32 CREATURE_NOPATH_EVADE_TIME = 5 * IN_MILLISECONDS;
+static const uint32 CREATURE_NOPATH_EVADE_TIME = 8 * IN_MILLISECONDS;
+static const uint32 CREATURE_NOPATH_REGEN_TIME = 4 * IN_MILLISECONDS;
 
 static const uint8 MAX_KILL_CREDIT = 2;
 static const uint32 MAX_CREATURE_MODELS = 4;
@@ -314,6 +315,8 @@ struct TC_GAME_API CreatureTemplate
     uint32  npcflag;
     float   speed_walk;
     float   speed_run;
+    float   detection_range;
+    uint32  corpse_delay;
     float   scale;
     uint32  rank;
     uint32  dmgschool;
