@@ -100,7 +100,6 @@ source_group("tswow-private" FILES ${TSWOW_PRIVATE})
 target_link_libraries(game
   PRIVATE
     trinity-core-interface
-    efsw
     sol2
   PUBLIC
     # tswow-begin
@@ -111,6 +110,12 @@ target_link_libraries(game
     # tswow-end
     game-interface
     )
+
+if(TARGET efsw)
+  target_link_libraries(game
+    PRIVATE
+      efsw)
+endif()
 
 set_target_properties(game
     PROPERTIES

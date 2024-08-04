@@ -29,7 +29,7 @@ void PlayerTaxi::InitTaxiNodesForLevel(uint32 race, uint32 chrClass, uint8 level
     {
         case CLASS_DEATH_KNIGHT:
         {
-            for (uint8 i = 0; i < TaxiMaskSize; ++i)
+            for (std::size_t i = 0; i < m_taximask.size(); ++i)
                 m_taximask[i] |= sOldContinentsNodesMask[i];
             break;
         }
@@ -38,17 +38,17 @@ void PlayerTaxi::InitTaxiNodesForLevel(uint32 race, uint32 chrClass, uint8 level
     // race specific initial known nodes: capital and taxi hub masks
     switch (race)
     {
-        case RACE_HUMAN:    SetTaximaskNode(2);  break;     // Human
-        case RACE_ORC:      SetTaximaskNode(23); break;     // Orc
-        case RACE_DWARF:    SetTaximaskNode(6);  break;     // Dwarf
-        case RACE_NIGHTELF: SetTaximaskNode(26);
-            SetTaximaskNode(27); break;     // Night Elf
-        case RACE_UNDEAD_PLAYER: SetTaximaskNode(11); break;// Undead
-        case RACE_TAUREN:   SetTaximaskNode(22); break;     // Tauren
-        case RACE_GNOME:    SetTaximaskNode(6);  break;     // Gnome
-        case RACE_TROLL:    SetTaximaskNode(23); break;     // Troll
-        case RACE_BLOODELF: SetTaximaskNode(82); break;     // Blood Elf
-        case RACE_DRAENEI:  SetTaximaskNode(94); break;     // Draenei
+        case RACE_HUMAN:            SetTaximaskNode(2);  break;     // Human
+        case RACE_ORC:              SetTaximaskNode(23); break;     // Orc
+        case RACE_DWARF:            SetTaximaskNode(6);  break;     // Dwarf
+        case RACE_NIGHTELF:         SetTaximaskNode(26);
+                                    SetTaximaskNode(27); break;     // Night Elf
+        case RACE_UNDEAD_PLAYER:    SetTaximaskNode(11); break;// Undead
+        case RACE_TAUREN:           SetTaximaskNode(22); break;     // Tauren
+        case RACE_GNOME:            SetTaximaskNode(6);  break;     // Gnome
+        case RACE_TROLL:            SetTaximaskNode(23); break;     // Troll
+        case RACE_BLOODELF:         SetTaximaskNode(82); break;     // Blood Elf
+        case RACE_DRAENEI:          SetTaximaskNode(94); break;     // Draenei
     }
 
     // new continent starting masks (It will be accessible only at new map)
@@ -66,7 +66,7 @@ bool PlayerTaxi::LoadTaxiMask(std::string const& data)
 {
     bool warn = false;
     std::vector<std::string_view> tokens = Trinity::Tokenize(data, ' ', false);
-    for (uint8 index = 0; (index < TaxiMaskSize) && (index < tokens.size()); ++index)
+    for (size_t index = 0; (index < m_taximask.size()) && (index < tokens.size()); ++index)
     {
         if (Optional<uint32> mask = Trinity::StringTo<uint32>(tokens[index]))
         {
@@ -87,15 +87,9 @@ bool PlayerTaxi::LoadTaxiMask(std::string const& data)
 void PlayerTaxi::AppendTaximaskTo(ByteBuffer& data, bool all)
 {
     if (all)
-    {
-        for (uint8 i = 0; i < TaxiMaskSize; ++i)
-            data << uint32(sTaxiNodesMask[i]);              // all existing nodes
-    }
+        data.append(sTaxiNodesMask.data(), sTaxiNodesMask.size()); // all existing nodes
     else
-    {
-        for (uint8 i = 0; i < TaxiMaskSize; ++i)
-            data << uint32(m_taximask[i]);                  // known nodes
-    }
+        data.append(m_taximask.data(), m_taximask.size()); // known nodes
 }
 
 bool PlayerTaxi::LoadTaxiDestinationsFromString(const std::string& values, uint32 team)
@@ -176,8 +170,8 @@ uint32 PlayerTaxi::GetCurrentTaxiPath() const
 
 std::ostringstream& operator<<(std::ostringstream& ss, PlayerTaxi const& taxi)
 {
-    for (uint8 i = 0; i < TaxiMaskSize; ++i)
-        ss << taxi.m_taximask[i] << ' ';
+    for (std::size_t i = 0; i < taxi.m_taximask.size(); ++i)
+        ss << uint32(taxi.m_taximask[i]) << ' ';
     return ss;
 }
 

@@ -15,16 +15,24 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef boost_1_73_process_windows_nopch_h__
-#define boost_1_73_process_windows_nopch_h__
+#ifndef TRINITYCORE_TIMEZONE_H
+#define TRINITYCORE_TIMEZONE_H
 
-#include "CompilerDefs.h"
-#include <boost/version.hpp>
+#include "Define.h"
+#include "Duration.h"
+#include <string>
 
-#if TRINITY_PLATFORM == TRINITY_PLATFORM_WINDOWS && BOOST_VERSION >= 107300 && BOOST_VERSION < 107800
-// __kernel_entry for boost/process/detail/windows/handle_workaround.hpp
-// DWORD for boost/process/detail/windows/handles.hpp
-#include <windows.h>
-#endif
+namespace Trinity::Timezone
+{
+TC_COMMON_API Minutes GetOffsetByHash(uint32 hash);
 
-#endif // boost_1_73_process_windows_nopch_h__
+// Returns the time offset that must be added to UTC time to get localtime
+TC_COMMON_API Minutes GetSystemZoneOffsetAt(SystemTimePoint date);
+TC_COMMON_API Minutes GetSystemZoneOffset(bool applyDst = true);
+
+TC_COMMON_API std::string GetSystemZoneName();
+
+TC_COMMON_API std::string_view FindClosestClientSupportedTimezone(std::string_view currentTimezone, Minutes currentTimezoneOffset);
+}
+
+#endif // TRINITYCORE_TIMEZONE_H

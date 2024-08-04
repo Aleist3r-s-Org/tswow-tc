@@ -231,7 +231,7 @@ bool Weather::UpdateWeather(bool triggerScripts)
     WorldPackets::Misc::Weather weather(state, m_intensity);
 
     //- Returns false if there were no players found to update
-    if (!sWorld->SendZoneMessage(m_zone, weather.Write()))
+    if (!m_map->SendZoneMessage(m_zone, weather.Write()))
         return false;
 
     ///- Log the event
