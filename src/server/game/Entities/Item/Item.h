@@ -77,7 +77,9 @@ class TC_GAME_API Item : public Object
         void SetOwnerGUID(ObjectGuid guid) { SetGuidValue(ITEM_FIELD_OWNER, guid); }
         Player* GetOwner()const;
 
-        void SetBinding(bool val) { ApplyModFlag(ITEM_FIELD_FLAGS, ITEM_FIELD_FLAG_SOULBOUND, val); }
+        /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+        void SetBinding(bool val);
+        /** @custom-end */
         bool IsSoulBound() const { return HasFlag(ITEM_FIELD_FLAGS, ITEM_FIELD_FLAG_SOULBOUND); }
         bool IsBoundAccountWide() const { return GetTemplate()->HasFlag(ITEM_FLAG_IS_BOUND_TO_ACCOUNT); }
         bool IsBindedNotWith(Player const* player) const;
@@ -199,10 +201,13 @@ class TC_GAME_API Item : public Object
         void SetSoulboundTradeable(GuidSet const& allowedLooters);
         void ClearSoulboundTradeable(Player* currentOwner);
         bool CheckSoulboundTradeExpire();
+        /** @custom-end */
 
-        // @tswow-begin (Using Rochet2/Transmog)
-        uint32 transmog = 0;
-        // @tswow-end
+        /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+        void SetTransmog(uint32 entry) { transmog = GetEntry() == entry ? 0 : entry; }
+        void SetEnchant(uint32 entry) { enchant = GetEnchantmentId(PERM_ENCHANTMENT_SLOT) == entry ? 0 : entry; }
+        uint32 GetTransmog() const { return transmog; }
+        uint32 GetEnchant() const { return enchant; }
 
         void BuildUpdate(UpdateDataMapType&) override;
 
@@ -224,5 +229,9 @@ class TC_GAME_API Item : public Object
         uint32 m_paidMoney;
         uint32 m_paidExtendedCost;
         GuidSet allowedGUIDs;
+        /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+        uint32 transmog = 0;
+        uint32 enchant = 0;
+        /** @custom-end */
 };
 #endif

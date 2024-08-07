@@ -15,6 +15,9 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+/** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+#include "Transmogrification.h"
+/** @custom-end */
 #include "Player.h"
 #include "AccountMgr.h"
 #include "AchievementMgr.h"
@@ -94,9 +97,6 @@
 #include "TicketMgr.h"
 #include "TradeData.h"
 #include "Trainer.h"
-// @tswow-begin (Using Rochet2/Transmog)
-#include "Transmogrification.h"
-// @tswow-end
 #include "Transport.h"
 #include "UpdateData.h"
 #include "UpdateFieldFlags.h"
@@ -4225,11 +4225,12 @@ void Player::DeleteFromDB(ObjectGuid playerguid, uint32 accountId, bool updateRe
             stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_CHARACTER);
             stmt->setUInt32(0, guid);
             trans->Append(stmt);
-// @tswow-begin (Using Rochet2/Transmog)
-#ifdef PRESETS
-            trans->PAppend("DELETE FROM `custom_transmogrification_sets` WHERE `Owner` = {}", guid);
-#endif
-// @tswow-end
+
+            /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+            stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_TRANSMOG_SETS);
+            stmt->setUInt32(0, guid);
+            trans->Append(stmt);
+            /** @custom-end */
 
             stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_PLAYER_ACCOUNT_DATA);
             stmt->setUInt32(0, guid);
@@ -12124,6 +12125,9 @@ Item* Player::StoreNewItem(ItemPosCountVec const& dest, uint32 item, bool update
             stmt->setString(1, ss.str());
             CharacterDatabase.Execute(stmt);
         }
+        /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+        Transmogrification::instance().AddToCollection(this, pItem);
+        /** @custom-end */
     }
     return pItem;
 }
@@ -12163,6 +12167,10 @@ Item* Player::_StoreItem(uint16 pos, Item* pItem, uint32 count, bool clone, bool
 
     TC_LOG_DEBUG("entities.player.items", "Player::_StoreItem: Player '{}' ({}), Bag: {}, Slot: {}, Item: {} ({}), Count: {}",
         GetName(), GetGUID().ToString(), bag, slot, pItem->GetEntry(), pItem->GetGUID().ToString(), count);
+
+    /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+    Transmogrification::instance().AddToCollection(this, pItem);
+    /** @custom-end */
 
     Item* pItem2 = GetItemByPos(bag, slot);
 
@@ -12263,6 +12271,9 @@ Item* Player::EquipNewItem(uint16 pos, uint32 item, bool update)
     if (Item* pItem = Item::CreateItem(item, 1, this))
     {
         UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_RECEIVE_EPIC_ITEM, item, 1);
+        /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+        Transmogrification::instance().AddToCollection(this, pItem);
+        /** @custom-end */
         Item* equippedItem = EquipItem(pos, pItem, update);
         ItemAddedQuestCheck(item, 1);
         return equippedItem;
@@ -12430,13 +12441,28 @@ void Player::SetVisibleItemSlot(uint8 slot, Item* pItem)
 {
     if (pItem)
     {
-        // @tswow-begin (Using Rochet2/Transmog)
-        if (uint32 entry = pItem->transmog)
+        /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+        if (uint32 entry = pItem->GetTransmog())
+        {
+            if (entry == InvisibleEntry)
+                entry = 0;
+            if (entry == NormalEntry)
+                entry = pItem->GetEntry();
             SetUInt32Value(PLAYER_VISIBLE_ITEM_1_ENTRYID + (slot * 2), entry);
+        }
         else
             SetUInt32Value(PLAYER_VISIBLE_ITEM_1_ENTRYID + (slot * 2), pItem->GetEntry());
-        // @tswow-end
-        SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (slot * 2), 0, pItem->GetEnchantmentId(PERM_ENCHANTMENT_SLOT));
+        if (uint32 entry = pItem->GetEnchant())
+        {
+            if (entry == InvisibleEntry)
+                entry = 0;
+            if (entry == NormalEntry)
+                entry = pItem->GetEnchantmentId(PERM_ENCHANTMENT_SLOT);
+            SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (slot * 2), 0, entry);
+        }
+        else
+            SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (slot * 2), 0, pItem->GetEnchantmentId(PERM_ENCHANTMENT_SLOT));
+        /** @custom-end */
         SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (slot * 2), 1, pItem->GetEnchantmentId(TEMP_ENCHANTMENT_SLOT));
     }
     else
@@ -12565,10 +12591,11 @@ void Player::MoveItemFromInventory(uint8 bag, uint8 slot, bool update)
 {
     if (Item* it = GetItemByPos(bag, slot))
     {
+        /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+        it->SetTransmog(0);
+        it->SetEnchant(0);
+        /** @custom-end */
         RemoveItem(bag, slot, update);
-        // @tswow-begin (Using Rochet2/Transmog)
-        it->transmog = 0;
-        // @tswow-end
         ItemRemovedQuestCheck(it->GetEntry(), it->GetCount());
         it->SetNotRefundable(this, false);
         RemoveItemFromUpdateQueueOf(it, this);
@@ -12607,6 +12634,9 @@ void Player::MoveItemToInventory(ItemPosCountVec const& dest, Item* pItem, bool 
     // update quest counters
     ItemAddedQuestCheck(itemId, count);
     UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_RECEIVE_EPIC_ITEM, itemId, count);
+    /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+    Transmogrification::instance().AddToCollection(this, pLastItem);
+    /** @custom-end */
 }
 
 void Player::DestroyItem(uint8 bag, uint8 slot, bool update)
@@ -14243,7 +14273,21 @@ void Player::ApplyEnchantment(Item* item, EnchantmentSlot slot, bool apply, bool
 
     // visualize enchantment at player and equipped items
     if (slot == PERM_ENCHANTMENT_SLOT)
-        SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (item->GetSlot() * 2), 0, apply ? item->GetEnchantmentId(slot) : 0);
+    /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+    {
+        uint32 entry = item->GetEnchant();
+        if (apply && entry)
+        {
+            if (entry == InvisibleEntry)
+                entry = 0;
+            if (entry == NormalEntry)
+                entry = item->GetEnchantmentId(PERM_ENCHANTMENT_SLOT);
+            SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (item->GetSlot() * 2), 0, entry);
+        }
+        else
+            SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (item->GetSlot() * 2), 0, apply ? item->GetEnchantmentId(slot) : 0);
+    }
+    /** @custom-end */
 
     if (slot == TEMP_ENCHANTMENT_SLOT)
         SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (item->GetSlot() * 2), 1, apply ? item->GetEnchantmentId(slot) : 0);
@@ -15405,6 +15449,11 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
                 }
                 else if (quest->IsDFQuest())
                     SendItemRetrievalMail(itemId, quest->RewardItemIdCount[i]);
+
+                /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+                if (quest->RewardItemIdCount[i])
+                    Transmogrification::instance().AddToCollection(this, sObjectMgr->GetItemTemplate(quest->RewardItemId[i]));
+                /** @custom-end */
             }
         }
     }
@@ -15420,6 +15469,11 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
                 SendNewItem(item, quest->RewardChoiceItemCount[reward], true, false, false, false);
             }
         }
+        /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+        for (uint32 reward = 0; reward < quest->GetRewChoiceItemsCount(); ++reward)
+            if (quest->RewardChoiceItemCount[reward])
+                Transmogrification::instance().AddToCollection(this, sObjectMgr->GetItemTemplate(quest->RewardChoiceItemId[reward]));
+        /** @custom-end */
     }
 
     uint16 log_slot = FindQuestSlot(quest_id);
@@ -18042,6 +18096,74 @@ bool Player::LoadFromDB(ObjectGuid guid, CharacterDatabaseQueryHolder const& hol
     // must be before inventory (some items required reputation check)
     m_reputationMgr->LoadFromDB(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_REPUTATION));
 
+    /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+    if (auto result = holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_TRANSMOG))
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            uint32 type = fields[0].GetUInt32();
+            uint32 entry = fields[1].GetUInt32();
+            switch (type)
+            {
+            case TRANSMOG_TYPE_ITEM:
+            case TRANSMOG_TYPE_ENCHANT:
+                break;
+            default:
+                TC_LOG_ERROR("custom.transmog", "Account {} has transmog with unknown type {} in custom_account_transmog, ignoring", GetSession()->GetAccountId(), type);
+                continue;
+            }
+            transmogrification_appearances[type].insert(entry);
+        } while (result->NextRow());
+    }
+
+    if (auto result = holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_TRANSMOG_SETS))
+    {
+        do
+        {
+            Field* field = result->Fetch();
+            uint8 PresetID = field[0].GetUInt8();
+            std::string SetName = field[1].GetString();
+            std::istringstream SetData(field[2].GetString());
+
+            presetMap[PresetID].name = SetName;
+
+            uint32 slot;
+            uint32 entry;
+            uint32 type;
+            while (SetData >> slot >> entry >> type)
+            {
+                if (slot >= EQUIPMENT_SLOT_END)
+                {
+                    TC_LOG_ERROR("custom.transmog", "Set has invalid slot {} (Owner: {}, PresetID: {}), ignoring.", slot, GetGUID().GetCounter(), uint32(PresetID));
+                    continue;
+                }
+                switch (type)
+                {
+                case TRANSMOG_TYPE_ITEM:
+                    if (!sObjectMgr->GetItemTemplate(entry))
+                    {
+                        TC_LOG_ERROR("custom.transmog", "Set has invalid item entry {} (Owner: {}, PresetID: {}), ignoring.", entry, GetGUID().GetCounter(), uint32(PresetID));
+                        continue;
+                    }
+                    break;
+                case TRANSMOG_TYPE_ENCHANT:
+                    if (!sSpellItemEnchantmentStore.LookupEntry(entry))
+                    {
+                        TC_LOG_ERROR("custom.transmog", "Set has invalid enchant entry {} (Owner: {}, PresetID: {}), ignoring.", entry, GetGUID().GetCounter(), uint32(PresetID));
+                        continue;
+                    }
+                    break;
+                default:
+                    TC_LOG_ERROR("custom.transmog", "Set has invalid transmog type {} (Owner: {}, PresetID: {}), ignoring.", type, GetGUID().GetCounter(), uint32(PresetID));
+                    continue;
+                }
+                presetMap[PresetID].data.push_back(std::make_tuple(static_cast<uint8>(slot), static_cast<uint32>(entry), static_cast<AppearanceType>(type)));
+            }
+        } while (result->NextRow());
+    }
+    /** @custom-end */
+
     _LoadInventory(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_INVENTORY), time_diff);
 
     // update items with duration and realtime
@@ -18525,6 +18647,17 @@ Item* Player::_LoadItem(CharacterDatabaseTransaction trans, uint32 zoneId, uint3
         item = NewItemOrBag(proto);
         if (item->LoadFromDB(itemGuid, GetGUID(), fields, itemEntry))
         {
+            /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+            auto const transmog = item->GetTransmog();
+            bool hasTemplate = transmog != NormalEntry && transmog != InvisibleEntry;
+            if (transmog && hasTemplate)
+            {
+                auto source = sObjectMgr->GetItemTemplate(transmog);
+                if (!source || Transmogrification::instance().CannotTransmogrifyItemWithItem(this, proto, source, false))
+                    item->SetTransmog(0); // Player swapped factions? Or settings changed.
+            }
+            /** @custom-end */
+
             CharacterDatabasePreparedStatement* stmt;
 
             // Do not allow to have item limited to another map/zone in alive state
@@ -19835,6 +19968,26 @@ void Player::SaveToDB(CharacterDatabaseTransaction trans, bool create /* = false
     }
 
     trans->Append(stmt);
+
+    /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+    stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_TRANSMOG_SETS);
+    stmt->setUInt32(0, GetGUID().GetCounter());
+    trans->Append(stmt);
+    for (auto&& it : presetMap)
+    {
+        if (it.second.data.empty())
+            continue;
+        std::ostringstream ss;
+        for (auto const& v : it.second.data)
+            ss << static_cast<uint32>(std::get<uint8>(v)) << ' ' << std::get<uint32>(v) << ' ' << static_cast<uint32>(std::get<AppearanceType>(v)) << ' ';
+        stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_TRANSMOG_SETS);
+        stmt->setUInt32(0, GetGUID().GetCounter());
+        stmt->setUInt8(1, it.first);
+        stmt->setString(2, it.second.name);
+        stmt->setString(3, ss.str());
+        trans->Append(stmt);
+    }
+    /** @custom-end */
 
     if (m_fishingSteps != 0)
     {
@@ -24009,13 +24162,15 @@ void Player::AutoUnequipOffhandIfNeed(bool force /*= false*/)
     }
     else
     {
-        // @tswow-begin (Using Rochet2/Transmog)
-        uint32 transmog = offItem->transmog;
-        // @tswow-end
+        /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+        uint32 transmog = offItem->GetTransmog();
+        uint32 enchant = offItem->GetEnchant();
+        /** @custom-end */
         MoveItemFromInventory(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND, true);
-        // @tswow-begin (Using Rochet2/Transmog)
-        offItem->transmog = transmog;
-        // @tswow-end
+        /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+        offItem->SetTransmog(transmog);
+        offItem->SetEnchant(enchant);
+        /** @custom-end */
 
         CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
         offItem->DeleteFromInventoryDB(trans);                   // deletes item from character's inventory

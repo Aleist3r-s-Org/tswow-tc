@@ -901,7 +901,7 @@ struct ItemBagFamilyEntry
     //uint32 Name_lang_mask;                                // 17
 };
 
-// @tswow-begin (Using Rochet2/Transmog)
+/** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
 struct ItemDisplayInfoEntry
 {
     uint32 ID;                                              // 0
@@ -917,7 +917,7 @@ struct ItemDisplayInfoEntry
     int32 ItemVisual;                                       // 23
     uint32 ParticleColorID;                                 // 24
 };
-// @tswow-end
+/** @custom-end */
 
 /*
 struct ItemCondExtCostsEntry

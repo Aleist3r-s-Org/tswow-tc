@@ -66,6 +66,9 @@
 #include "World.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
+/** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+#include "Transmogrification.h"
+/** @custom-end */
 
 SpellEffectHandlerFn SpellEffectHandlers[TOTAL_SPELL_EFFECTS] =
 {
@@ -2714,6 +2717,10 @@ void Spell::EffectEnchantItemPerm()
 
         item_owner->RemoveTradeableItem(itemTarget);
         itemTarget->ClearSoulboundTradeable(item_owner);
+
+        /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+        Transmogrification::instance().AddToCollection(item_owner, itemTarget);
+        /** @custom-end */
     }
 }
 

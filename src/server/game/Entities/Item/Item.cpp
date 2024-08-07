@@ -38,6 +38,9 @@
 #include "World.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
+/** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+#include "Transmogrification.h"
+/** @custom-end */
 
 void AddItemsSetItem(Player* player, Item* item)
 {
@@ -364,6 +367,7 @@ void Item::SaveToDB(CharacterDatabaseTransaction trans)
             stmt->setString(++index, m_text);
             // @tswow-begin (Using Rochet2/Transmog)
             stmt->setUInt32(++index, transmog);
+            stmt->setUInt32(++index, enchant);
             // @tswow-end
             stmt->setUInt32(++index, guid);
 
@@ -503,7 +507,8 @@ bool Item::LoadFromDB(ObjectGuid::LowType guid, ObjectGuid owner_guid, Field* fi
     }
 
     // @tswow-begin (Using Rochet2/Transmog)
-    transmog = fields[15].GetUInt32();
+    transmog = fields[16].GetUInt32();
+    enchant = fields[17].GetUInt32();
     // @tswow-end
 
     return true;
@@ -548,6 +553,15 @@ Player* Item::GetOwner()const
 {
     return ObjectAccessor::FindPlayer(GetOwnerGUID());
 }
+
+/** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+void Item::SetBinding(bool val)
+{
+    ApplyModFlag(ITEM_FIELD_FLAGS, ITEM_FIELD_FLAG_SOULBOUND, val);
+    if (val)
+        Transmogrification::instance().AddToCollection(GetOwner(), this);
+}
+/** @custom-end */
 
 // Just a "legacy shortcut" for proto->GetSkill()
 uint32 Item::GetSkill()

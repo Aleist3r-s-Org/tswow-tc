@@ -76,9 +76,9 @@ char constexpr GtRegenMPPerSptfmt[] = "f";
 char constexpr Holidaysfmt[] = "niiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiixxsiix";
 char constexpr Itemfmt[] = "niiiiiii";
 char constexpr ItemBagFamilyfmt[] = "nxxxxxxxxxxxxxxxxx";
-// @tswow-begin (Using Rochet2/Transmog)
+/** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
 char constexpr ItemDisplayTemplateEntryfmt[] = "nssssssiiiiiiiissssssssii";
-// @tswow-end
+/** @custom-end */
 //char constexpr ItemCondExtCostsEntryfmt[] = "xiii";
 char constexpr ItemExtendedCostEntryfmt[] = "niiiiiiiiiiiiiix";
 char constexpr ItemLimitCategoryEntryfmt[] = "nxxxxxxxxxxxxxxxxxii";

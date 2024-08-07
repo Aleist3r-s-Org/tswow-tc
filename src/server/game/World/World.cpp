@@ -94,6 +94,9 @@
 #include "WeatherMgr.h"
 #include "WhoListStorage.h"
 #include "WorldSession.h"
+/** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+#include "Transmogrification.h"
+/** @custom-end */
 
 #include <boost/asio/ip/address.hpp>
 
@@ -1571,6 +1574,10 @@ void World::LoadConfigSettings(bool reload)
     // Specifies if IP addresses can be logged to the database
     m_bool_configs[CONFIG_ALLOW_LOGGING_IP_ADDRESSES_IN_DATABASE] = sConfigMgr->GetBoolDefault("AllowLoggingIPAddressesInDatabase", true, true);
 
+    /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+    Transmogrification::instance().LoadConfig(reload);
+    /** @custom-end */
+
     // call ScriptMgr if we're reloading the configuration
     if (reload)
         sScriptMgr->OnConfigLoad(reload);
@@ -2303,6 +2310,10 @@ void World::SetInitialWorldSettings()
             }
         });
     }
+
+    /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+    Transmogrification::instance().LoadEnchants();
+    /** @custom-end */
 
     uint32 startupDuration = GetMSTimeDiffToNow(startupBegin);
 

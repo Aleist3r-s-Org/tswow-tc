@@ -34,9 +34,9 @@
 #include "PetDefines.h"
 #include "PlayerTaxi.h"
 #include "QuestDef.h"
-// @tswow-begin (Using Rochet2/Transmog)
-#include "Transmogrification.h"
-// @tswow-end
+/** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+#include "TransmogrificationDefines.h"
+/** @custom-end */
 #include <memory>
 #include <queue>
 #include <unordered_set>
@@ -158,17 +158,15 @@ struct SpellModifier
     Aura* const ownerAura;
 };
 
-// @tswow-begin (Using Rochet2/Transmog)
-#ifdef PRESETS
-typedef std::map<uint8, uint32> PresetslotMapType;
+/** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+typedef std::array<std::unordered_set<uint32>, TRANSMOG_TYPE_COUNT> AppearanceContainer;
 struct PresetData
 {
     std::string name;
-    PresetslotMapType slotMap; // slotMap[slotId] = entry
+    SetTransmogs data;
 };
-typedef std::map<uint8, PresetData> PresetMapType;
-#endif
-// @tswow-end
+typedef std::map<uint8 /*presetid*/, PresetData> PresetMapType;
+/** @custom-end */
 
 typedef std::unordered_map<uint32, PlayerTalent*> PlayerTalentMap;
 typedef std::unordered_map<uint32, PlayerSpell> PlayerSpellMap;
@@ -756,6 +754,8 @@ enum PlayerLoginQueryIndex
     PLAYER_LOGIN_QUERY_LOAD_MONTHLY_QUEST_STATUS,
     PLAYER_LOGIN_QUERY_LOAD_CORPSE_LOCATION,
     PLAYER_LOGIN_QUERY_LOAD_PET_SLOTS,
+    PLAYER_LOGIN_QUERY_LOAD_TRANSMOG,
+    PLAYER_LOGIN_QUERY_LOAD_TRANSMOG_SETS,
     MAX_PLAYER_LOGIN_QUERY
 };
 
@@ -2235,12 +2235,11 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         std::string GetMapAreaAndZoneString() const;
         std::string GetCoordsMapAreaAndZoneString() const;
 
-// @tswow-begin (Using Rochet2/Transmog)
-#ifdef PRESETS
-        PresetMapType presetMap; // presetMap[presetId] = presetData
-#endif
-// @tswow-end
-
+        /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+        BasicEvent* pendingTransmogCheck = nullptr;
+        AppearanceContainer transmogrification_appearances;
+        PresetMapType presetMap;
+        /** @custom-end */
         std::string GetDebugInfo() const override;
 
     protected:

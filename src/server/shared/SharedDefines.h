@@ -390,6 +390,12 @@ uint32 constexpr QuestDifficultyColors[MAX_QUEST_DIFFICULTY] = {
     0xffff2020
 };
 
+size_t constexpr MAX_CUSTOM_COLORS = 1;
+uint32 constexpr CustomColors[MAX_CUSTOM_COLORS] =
+{
+    0xffff80ff,        // Transmog, Pink
+};
+
 // ***********************************
 // Spell Attributes definitions
 // ***********************************

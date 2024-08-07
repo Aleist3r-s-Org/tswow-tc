@@ -221,6 +221,16 @@ bool LoginQueryHolder::Initialize()
     stmt->setUInt32(0, lowGuid);
     res &= SetPreparedQuery(PLAYER_LOGIN_QUERY_LOAD_PET_SLOTS, stmt);
 
+    /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+    stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_ACCOUNT_TRANSMOG);
+    stmt->setUInt32(0, m_accountId);
+    res &= SetPreparedQuery(PLAYER_LOGIN_QUERY_LOAD_TRANSMOG, stmt);
+
+    stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_TRANSMOG_SETS);
+    stmt->setUInt32(0, lowGuid);
+    res &= SetPreparedQuery(PLAYER_LOGIN_QUERY_LOAD_TRANSMOG_SETS, stmt);
+    /** @custom-end */
+
     return res;
 }
 

@@ -29,9 +29,6 @@
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Opcodes.h"
-// @tswow-begin (Using Rochet2/Transmog)
-#include "Transmogrification.h"
-// @tswow-end
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "Spell.h"
@@ -690,12 +687,12 @@ void WorldSession::HandleMirrorImageDataRequest(WorldPacket& recvData)
                 data << uint32(0);
             else if (Item const* item = player->GetItemByPos(INVENTORY_SLOT_BAG_0, *itr))
             {
-                // @tswow-begin (Using Rochet2/Transmog)
-                if (auto const * itemTemplate = sObjectMgr->GetItemTemplate(item->transmog))
+                /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
+                if (auto const* itemTemplate = sObjectMgr->GetItemTemplate(item->GetTransmog()))
                     data << uint32(itemTemplate->DisplayInfoID);
                 else
                     data << uint32(item->GetTemplate()->DisplayInfoID);
-                // @tswow-end
+                /** @custom-end */
             }
             else
                 data << uint32(0);
