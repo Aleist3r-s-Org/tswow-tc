@@ -187,7 +187,6 @@ uint32 GenerateEnchSuffixFactor(uint32 item_id)
         case INVTYPE_TABARD:
         case INVTYPE_AMMO:
         case INVTYPE_QUIVER:
-        case INVTYPE_RELIC:
             return 0;
             // Select point coefficient
         case INVTYPE_HEAD:
@@ -211,6 +210,9 @@ uint32 GenerateEnchSuffixFactor(uint32 item_id)
         case INVTYPE_SHIELD:
         case INVTYPE_CLOAK:
         case INVTYPE_HOLDABLE:
+        /** @custom-start */
+        case INVTYPE_RELIC:
+        /** @custom-end */
             suffixFactor = 2;
             break;
         case INVTYPE_WEAPON:

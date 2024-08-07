@@ -2647,7 +2647,8 @@ enum LockType
     LOCKTYPE_SLOW_CLOSE            = 18,
     LOCKTYPE_FISHING               = 19,
     LOCKTYPE_INSCRIPTION           = 20,
-    LOCKTYPE_OPEN_FROM_VEHICLE     = 21
+    LOCKTYPE_OPEN_FROM_VEHICLE     = 21,
+    LOCKTYPE_ARCHAEOLOGY           = 22
 };
 
 // CreatureType.dbc
@@ -2857,7 +2858,8 @@ enum QuestSort
     QUEST_SORT_JEWELCRAFTING       = 373,
     QUEST_SORT_NOBLEGARDEN         = 374,
     QUEST_SORT_PILGRIMS_BOUNTY     = 375,
-    QUEST_SORT_LOVE_IS_IN_THE_AIR  = 376
+    QUEST_SORT_LOVE_IS_IN_THE_AIR  = 376,
+    QUEST_SORT_ARCHAEOLOGY         = 379
 };
 
 constexpr uint8 ClassByQuestSort(int32 QuestSort)
@@ -3031,10 +3033,12 @@ enum SkillType
     SKILL_PET_WASP                 = 785,
     SKILL_PET_EXOTIC_RHINO         = 786,
     SKILL_PET_EXOTIC_CORE_HOUND    = 787,
-    SKILL_PET_EXOTIC_SPIRIT_BEAST  = 788
+    SKILL_PET_EXOTIC_SPIRIT_BEAST  = 788,
+    SKILL_WARGLAIVES               = 789,
+    SKILL_ARCHAEOLOGY              = 790,
 };
 
-#define MAX_SKILL_TYPE               789
+#define MAX_SKILL_TYPE               791
 
 constexpr SkillType SkillByLockType(LockType locktype)
 {
@@ -3045,6 +3049,7 @@ constexpr SkillType SkillByLockType(LockType locktype)
         case LOCKTYPE_MINING:      return SKILL_MINING;
         case LOCKTYPE_FISHING:     return SKILL_FISHING;
         case LOCKTYPE_INSCRIPTION: return SKILL_INSCRIPTION;
+        case LOCKTYPE_ARCHAEOLOGY: return SKILL_ARCHAEOLOGY;
         default: break;
     }
     return SKILL_NONE;
@@ -3065,6 +3070,7 @@ constexpr uint32 SkillByQuestSort(int32 QuestSort)
         case QUEST_SORT_FIRST_AID:      return SKILL_FIRST_AID;
         case QUEST_SORT_JEWELCRAFTING:  return SKILL_JEWELCRAFTING;
         case QUEST_SORT_INSCRIPTION:    return SKILL_INSCRIPTION;
+        case QUEST_SORT_ARCHAEOLOGY:    return SKILL_ARCHAEOLOGY;
     }
     return 0;
 }
@@ -3217,7 +3223,8 @@ enum ChatLinkColors : uint32
     CHAT_LINK_COLOR_SPELL       = 0xff71d5ff,   // bright blue
     CHAT_LINK_COLOR_ENCHANT     = 0xffffd000,   // orange
     CHAT_LINK_COLOR_ACHIEVEMENT = 0xffffff00,
-    CHAT_LINK_COLOR_GLYPH       = 0xff66bbff
+    CHAT_LINK_COLOR_GLYPH       = 0xff66bbff,
+    CHAT_LINK_COLOR_TRANSMOG    = 0xffff80ff
 };
 
 // Values from ItemPetFood (power of (value-1) used for compare with CreatureFamilyEntry.PetFoodMask

@@ -201,13 +201,13 @@ class TC_GAME_API Item : public Object
         void SetSoulboundTradeable(GuidSet const& allowedLooters);
         void ClearSoulboundTradeable(Player* currentOwner);
         bool CheckSoulboundTradeExpire();
-        /** @custom-end */
 
         /** @custom-start (Using Rochet2/Transmog_legion_3.3.5)*/
         void SetTransmog(uint32 entry) { transmog = GetEntry() == entry ? 0 : entry; }
         void SetEnchant(uint32 entry) { enchant = GetEnchantmentId(PERM_ENCHANTMENT_SLOT) == entry ? 0 : entry; }
         uint32 GetTransmog() const { return transmog; }
         uint32 GetEnchant() const { return enchant; }
+        /** @custom-end */
 
         void BuildUpdate(UpdateDataMapType&) override;
 
