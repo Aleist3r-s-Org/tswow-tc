@@ -62,6 +62,7 @@ public:
             { "drunk",        rbac::RBAC_PERM_COMMAND_MODIFY_DRUNK,        false, &HandleModifyDrunkCommand,         "" },
             { "energy",       rbac::RBAC_PERM_COMMAND_MODIFY_ENERGY,       false, &HandleModifyEnergyCommand,        "" },
             { "faction",      rbac::RBAC_PERM_COMMAND_MODIFY_FACTION,      false, &HandleModifyFactionCommand,       "" },
+            { "focus",        rbac::RBAC_PERM_COMMAND_MODIFY_FOCUS,        false, &HandleModifyFocusCommand,         "" },
             { "gender",       rbac::RBAC_PERM_COMMAND_MODIFY_GENDER,       false, &HandleModifyGenderCommand,        "" },
             { "honor",        rbac::RBAC_PERM_COMMAND_MODIFY_HONOR,        false, &HandleModifyHonorCommand,         "" },
             { "hp",           rbac::RBAC_PERM_COMMAND_MODIFY_HP,           false, &HandleModifyHPCommand,            "" },
@@ -169,6 +170,22 @@ public:
             NotifyModification(handler, target, LANG_YOU_CHANGE_ENERGY, LANG_YOURS_ENERGY_CHANGED, energy / energyMultiplier, energymax / energyMultiplier);
             target->SetMaxPower(POWER_ENERGY, energymax);
             target->SetPower(POWER_ENERGY, energy);
+            return true;
+        }
+        return false;
+    }
+
+    //Edit Player Focus
+    static bool HandleModifyFocusCommand(ChatHandler* handler, char const* args)
+    {
+        int32 focus, focusmax;
+        Player* target = handler->getSelectedPlayerOrSelf();
+        int8 const focusMultiplier = 10;
+        if (CheckModifyResources(handler, args, target, focus, focusmax, focusMultiplier))
+        {
+            NotifyModification(handler, target, LANG_YOU_CHANGE_ENERGY, LANG_YOURS_ENERGY_CHANGED, focus / focusMultiplier, focusmax / focusMultiplier);
+            target->SetMaxPower(POWER_ENERGY, focusmax);
+            target->SetPower(POWER_ENERGY, focus);
             return true;
         }
         return false;

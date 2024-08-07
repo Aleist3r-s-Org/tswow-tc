@@ -2012,9 +2012,10 @@ void Player::RegenerateAll()
     m_regenTimerCount += m_regenTimer;
     m_foodEmoteTimerCount += m_regenTimer;
 
-    Regenerate(POWER_ENERGY);
     Regenerate(POWER_MANA);
     Regenerate(POWER_RAGE);
+    Regenerate(POWER_FOCUS);
+    Regenerate(POWER_ENERGY);
     Regenerate(POWER_RUNIC_POWER);
 
     // Runes act as cooldowns, and they don't need to send any data
@@ -2187,6 +2188,9 @@ void Player::ResetAllPowers()
             break;
         case POWER_RAGE:
             SetPower(POWER_RAGE, 0);
+            break;
+        case POWER_FOCUS:
+            SetFullPower(POWER_FOCUS);
             break;
         case POWER_ENERGY:
             SetFullPower(POWER_ENERGY);
@@ -4577,6 +4581,7 @@ void Player::ResurrectPlayer(float restore_percent, bool applySickness)
         SetHealth(uint32(GetMaxHealth()*restore_percent));
         SetPower(POWER_MANA, uint32(GetMaxPower(POWER_MANA)*restore_percent));
         SetPower(POWER_RAGE, 0);
+        SetPower(POWER_FOCUS, uint32(GetMaxPower(POWER_FOCUS)*restore_percent));
         SetPower(POWER_ENERGY, uint32(GetMaxPower(POWER_ENERGY)*restore_percent));
     }
 
@@ -24501,7 +24506,9 @@ void Player::ResurrectUsingRequestDataImpl()
     SetPower(POWER_MANA, resurrectMana);
 
     SetPower(POWER_RAGE, 0);
+    SetFullPower(POWER_FOCUS);
     SetFullPower(POWER_ENERGY);
+    SetPower(POWER_RUNIC_POWER, 0);
 
     SpawnCorpseBones();
 }

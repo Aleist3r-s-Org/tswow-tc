@@ -1213,7 +1213,7 @@ static std::pair<float, Optional<Rates>> const powerRegenInfo[MAX_POWERS] =
 {
     { 0.f,      RATE_POWER_MANA             }, // POWER_MANA
     { -12.5f,   RATE_POWER_RAGE_LOSS        }, // POWER_RAGE,           -1.25 rage per second
-    { 0.f,      std::nullopt                }, // POWER_FOCUS
+    { 5.f,      RATE_POWER_FOCUS            }, // POWER_FOCUS
     { 10.f,     RATE_POWER_ENERGY           }, // POWER_ENERGY,         +10 energy per second
     { 0.f,      std::nullopt                }, // POWER_HAPPINESS
     { 0.f,      std::nullopt                }, // POWER_RUNE
@@ -1232,64 +1232,72 @@ void Player::UpdatePowerRegen(Powers power)
     /// @todo possible use of miscvalueb instead of amount
     if (HasAuraTypeWithValue(SPELL_AURA_PREVENT_REGENERATE_POWER, power))
     {
-        SetFloatValue(UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER + AsUnderlyingType(power), power == POWER_ENERGY ? -10.f : 0.f);
-        SetFloatValue(UNIT_FIELD_POWER_REGEN_INTERRUPTED_FLAT_MODIFIER + AsUnderlyingType(power), power == POWER_ENERGY ? -10.f : 0.f);
+        float val = 0.f;
+
+        if (power == POWER_ENERGY)
+            val = -10.f;
+        else if (power == POWER_FOCUS)
+            val = -5.f;
+
+        SetFloatValue(UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER + AsUnderlyingType(power), val);
+        SetFloatValue(UNIT_FIELD_POWER_REGEN_INTERRUPTED_FLAT_MODIFIER + AsUnderlyingType(power), val);
         return;
     }
 
     switch (power)
     {
-    case POWER_MANA:
-    {
-        float Intellect = GetStat(STAT_INTELLECT);
-        // Mana regen from spirit and intellect
-        float power_regen = std::sqrt(Intellect) * OCTRegenMPPerSpirit();
-        // Apply PCT bonus from SPELL_AURA_MOD_POWER_REGEN_PERCENT aura on spirit base regen
-        power_regen *= GetTotalAuraMultiplierByMiscValue(SPELL_AURA_MOD_POWER_REGEN_PERCENT, POWER_MANA);
+        case POWER_MANA:
+        {
+            float Intellect = GetStat(STAT_INTELLECT);
+            // Mana regen from spirit and intellect
+            float power_regen = std::sqrt(Intellect) * OCTRegenMPPerSpirit();
+            // Apply PCT bonus from SPELL_AURA_MOD_POWER_REGEN_PERCENT aura on spirit base regen
+            power_regen *= GetTotalAuraMultiplierByMiscValue(SPELL_AURA_MOD_POWER_REGEN_PERCENT, POWER_MANA);
 
-        // Mana regen from SPELL_AURA_MOD_POWER_REGEN aura
-        float power_regen_mp5 = (GetTotalAuraModifierByMiscValue(SPELL_AURA_MOD_POWER_REGEN, POWER_MANA) + m_baseManaRegen) / 5.0f;
+            // Mana regen from SPELL_AURA_MOD_POWER_REGEN aura
+            float power_regen_mp5 = (GetTotalAuraModifierByMiscValue(SPELL_AURA_MOD_POWER_REGEN, POWER_MANA) + m_baseManaRegen) / 5.0f;
 
-        // Get bonus from SPELL_AURA_MOD_MANA_REGEN_FROM_STAT aura
-        AuraEffectList const& regenAura = GetAuraEffectsByType(SPELL_AURA_MOD_MANA_REGEN_FROM_STAT);
-        for (AuraEffectList::const_iterator i = regenAura.begin(); i != regenAura.end(); ++i)
-            power_regen_mp5 += GetStat(Stats((*i)->GetMiscValue())) * (*i)->GetAmount() / 500.0f;
+            // Get bonus from SPELL_AURA_MOD_MANA_REGEN_FROM_STAT aura
+            AuraEffectList const& regenAura = GetAuraEffectsByType(SPELL_AURA_MOD_MANA_REGEN_FROM_STAT);
+            for (AuraEffectList::const_iterator i = regenAura.begin(); i != regenAura.end(); ++i)
+                power_regen_mp5 += GetStat(Stats((*i)->GetMiscValue())) * (*i)->GetAmount() / 500.0f;
 
-        // Set regen rate in cast state apply only on spirit based regen
-        int32 modManaRegenInterrupt = GetTotalAuraModifier(SPELL_AURA_MOD_MANA_REGEN_INTERRUPT);
-        if (modManaRegenInterrupt > 100)
-            modManaRegenInterrupt = 100;
-        // @tswow-begin
-        FIRE(Player, OnUpdateManaRegen
-            , TSPlayer(this)
-            , TSMutableNumber<float>(&power_regen)
-            , TSMutableNumber<float>(&power_regen_mp5)
-            , TSMutableNumber<int32>(&modManaRegenInterrupt)
-        );
-        // @tswow-end
-        result_regen = power_regen_mp5 + power_regen;
-        result_regen_interrupted = power_regen_mp5 + CalculatePct(power_regen, modManaRegenInterrupt);
+            // Set regen rate in cast state apply only on spirit based regen
+            int32 modManaRegenInterrupt = GetTotalAuraModifier(SPELL_AURA_MOD_MANA_REGEN_INTERRUPT);
+            if (modManaRegenInterrupt > 100)
+                modManaRegenInterrupt = 100;
+            // @tswow-begin
+            FIRE(Player, OnUpdateManaRegen
+                , TSPlayer(this)
+                , TSMutableNumber<float>(&power_regen)
+                , TSMutableNumber<float>(&power_regen_mp5)
+                , TSMutableNumber<int32>(&modManaRegenInterrupt)
+            );
+            // @tswow-end
+            result_regen = power_regen_mp5 + power_regen;
+            result_regen_interrupted = power_regen_mp5 + CalculatePct(power_regen, modManaRegenInterrupt);
 
-        if (GetLevel() < 15)
-            modifier *= 2.066f - (GetLevel() * 0.066f);
-        break;
-    }
-    case POWER_RAGE:
-    case POWER_ENERGY:
-    case POWER_RUNIC_POWER:
-    {
-        result_regen = powerRegenInfo[AsUnderlyingType(power)].first;
-        result_regen_interrupted = 0.f;
+            if (GetLevel() < 15)
+                modifier *= 2.066f - (GetLevel() * 0.066f);
+            break;
+        }
+        case POWER_RAGE:
+        case POWER_ENERGY:
+        case POWER_FOCUS:
+        case POWER_RUNIC_POWER:
+        {
+            result_regen = powerRegenInfo[AsUnderlyingType(power)].first;
+            result_regen_interrupted = 0.f;
 
-        result_regen *= GetTotalAuraMultiplierByMiscValue(SPELL_AURA_MOD_POWER_REGEN_PERCENT, AsUnderlyingType(power));
-        result_regen_interrupted += static_cast<float>(GetTotalAuraModifierByMiscValue(SPELL_AURA_MOD_POWER_REGEN, AsUnderlyingType(power))) / 5.f;
+            result_regen *= GetTotalAuraMultiplierByMiscValue(SPELL_AURA_MOD_POWER_REGEN_PERCENT, AsUnderlyingType(power));
+            result_regen_interrupted += static_cast<float>(GetTotalAuraModifierByMiscValue(SPELL_AURA_MOD_POWER_REGEN, AsUnderlyingType(power))) / 5.f;
 
-        if (power != POWER_RUNIC_POWER) // Butchery requires combat
-            result_regen += result_regen_interrupted;
-        break;
-    }
-    default:
-        break;
+            if (power != POWER_RUNIC_POWER) // Butchery requires combat
+                result_regen += result_regen_interrupted;
+            break;
+        }
+        default:
+            break;
     }
 
     if (powerRegenInfo[AsUnderlyingType(power)].second.has_value())
@@ -1320,7 +1328,7 @@ float Player::GetPowerRegen(Powers power) const
 
     float regen = GetFloatValue((interrupted ? UNIT_FIELD_POWER_REGEN_INTERRUPTED_FLAT_MODIFIER : UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER) + AsUnderlyingType(power));
     if (power != POWER_MANA)
-        regen += (power == POWER_ENERGY || !interrupted) ? powerRegenInfo[AsUnderlyingType(power)].first : 0.f;
+        regen += (power == POWER_ENERGY || power == POWER_FOCUS || !interrupted) ? powerRegenInfo[AsUnderlyingType(power)].first : 0.f;
 
     return regen;
 }

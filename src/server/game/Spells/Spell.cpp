@@ -4851,7 +4851,7 @@ void Spell::TakePower()
     bool hit = true;
     if (unitCaster->GetTypeId() == TYPEID_PLAYER)
     {
-        if (powerType == POWER_RAGE || powerType == POWER_ENERGY || powerType == POWER_RUNE)
+        if (powerType == POWER_RAGE || powerType == POWER_FOCUS || powerType == POWER_ENERGY || powerType == POWER_RUNE)
         {
             if (ObjectGuid targetGUID = m_targets.GetUnitTargetGUID())
             {

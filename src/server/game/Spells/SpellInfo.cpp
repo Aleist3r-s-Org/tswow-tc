@@ -3270,10 +3270,12 @@ int32 SpellInfo::CalcPowerCost(WorldObject const* caster, SpellSchoolMask school
             case POWER_FOCUS:
             case POWER_ENERGY:
             case POWER_HAPPINESS:
+            /** @custom-start*/
+            case POWER_RUNIC_POWER:
+            /** @custom-end */
                 powerCost += int32(CalculatePct(unitCaster->GetMaxPower(PowerType), ManaCostPercentage));
                 break;
             case POWER_RUNE:
-            case POWER_RUNIC_POWER:
                 TC_LOG_DEBUG("spells", "CalculateManaCost: Not implemented yet!");
                 break;
             default:

@@ -291,6 +291,22 @@ enum Powers : int8
     POWER_ALL                           = 127 // SKIP
 };
 
+/** @custom-start */
+enum PowerMask : uint32
+{
+    POWER_MASK_NONE           = 0x00,
+    POWER_MASK_MANA           = (1 << POWER_MANA),
+    POWER_MASK_RAGE           = (1 << POWER_RAGE),
+    POWER_MASK_FOCUS          = (1 << POWER_FOCUS),
+    POWER_MASK_ENERGY         = (1 << POWER_ENERGY),
+    POWER_MASK_HAPPINESS      = (1 << POWER_HAPPINESS),
+    POWER_MASK_RUNE           = (1 << POWER_RUNE),
+    POWER_MASK_RUNIC_POWER    = (1 << POWER_RUNIC_POWER),
+    // Aleist3r: in this case -2 won't work so setting it manually to *some value*
+    POWER_MASK_HEALTH         = 0x80
+};
+/** @custom-end */
+
 #define MAX_RUNES 6
 
 // EnumUtils: DESCRIBE THIS

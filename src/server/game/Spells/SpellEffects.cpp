@@ -4366,7 +4366,9 @@ void Spell::EffectSelfResurrect()
     player->SetHealth(health);
     player->SetPower(POWER_MANA, mana);
     player->SetPower(POWER_RAGE, 0);
-    player->SetPower(POWER_ENERGY, player->GetMaxPower(POWER_ENERGY));
+    player->SetFullPower(POWER_ENERGY);
+    player->SetPower(POWER_FOCUS, 0);
+    player->SetPower(POWER_RUNIC_POWER, 0);
 
     player->SpawnCorpseBones();
 }
