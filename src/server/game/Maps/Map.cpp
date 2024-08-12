@@ -2950,6 +2950,18 @@ float Map::GetWaterLevel(float x, float y) const
 
 bool Map::isInLineOfSight(float x1, float y1, float z1, float x2, float y2, float z2, uint32 phasemask, LineOfSightChecks checks, VMAP::ModelIgnoreFlags ignoreFlags) const
 {
+    /** @custom-start */
+    if (sWorld->getBoolConfig(CONFIG_VMAP_ENHANCED_LOS_PVP) && IsBattlegroundOrArena())
+    {
+        ignoreFlags = VMAP::ModelIgnoreFlags::Nothing;
+    }
+
+    if (sWorld->getBoolConfig(CONFIG_VMAP_ENHANCED_LOS_WORLD) && IsWorldMap())
+    {
+        ignoreFlags = VMAP::ModelIgnoreFlags::Nothing;
+    }
+    /** @custom-end */
+
     if ((checks & LINEOFSIGHT_CHECK_VMAP)
       && !VMAP::VMapFactory::createOrGetVMapManager()->isInLineOfSight(GetId(), x1, y1, z1, x2, y2, z2, ignoreFlags))
         return false;
@@ -4520,6 +4532,13 @@ bool Map::Is25ManRaid() const
     // since 25man difficulties are 1 and 3, we can check them like that
     return IsRaid() && i_spawnMode & RAID_DIFFICULTY_MASK_25MAN;
 }
+
+/** @custom-start */
+bool Map::IsWorldMap() const
+{
+    return i_mapEntry && i_mapEntry->IsWorldMap();
+}
+/** @custom-end */
 
 bool Map::IsBattleground() const
 {

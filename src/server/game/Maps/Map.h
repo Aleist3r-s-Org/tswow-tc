@@ -478,6 +478,9 @@ class TC_GAME_API Map : public GridRefManager<NGridType>
         bool IsRaidOrHeroicDungeon() const;
         bool IsHeroic() const;
         bool Is25ManRaid() const;
+        /** @custom-start */
+        bool IsWorldMap() const;
+        /** @custom-end */
         bool IsBattleground() const;
         bool IsBattleArena() const;
         bool IsBattlegroundOrArena() const;

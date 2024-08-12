@@ -1806,12 +1806,15 @@ void Unit::HandleEmoteCommand(Emote emoteId)
 
     // level-based resistance does not apply to binary spells, and cannot be overcome by spell penetration
     // gameobject caster -- should it have level based resistance?
+    /** @custom-start */
+    // Minimum level for resistance calcs is 20, anyone below level 20 is considered level 20
     if (caster && caster->GetTypeId() != TYPEID_GAMEOBJECT && (!spellInfo || !spellInfo->HasAttribute(SPELL_ATTR0_CU_BINARY_SPELL)))
-        victimResistance += std::max((float(victim->GetLevelForTarget(caster)) - float(caster->GetLevelForTarget(victim))) * 5.0f, 0.0f);
+        victimResistance += std::max((std::max(float(victim->GetLevelForTarget(caster)), 20.0f) - std::max(float(caster->GetLevelForTarget(victim)), 20.0f)) * 5.0f, 0.0f);
 
     static uint32 const BOSS_LEVEL = 83;
     static float const BOSS_RESISTANCE_CONSTANT = 510.0f;
-    uint32 level = victim->GetLevel();
+    uint32 level = std::max(victim->GetLevel(), uint8(20));
+    /** @custom-end */
     float resistanceConstant = 0.0f;
 
     if (level == BOSS_LEVEL)
